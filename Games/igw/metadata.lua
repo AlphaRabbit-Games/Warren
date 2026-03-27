@@ -317,7 +317,9 @@ return {
     },
 
     PassageNode = {
-        autoClose = 0,  -- seconds until re-close (0 = stays open)
+        autoClose = 3,       -- seconds after last player leaves zone to re-close
+        frameModel = "door_frame",  -- Model name in ReplicatedStorage.Assets (nil = no frame)
+        frameBorder = 3,     -- studs of border around opening
     },
 
     TrussBuilder = {

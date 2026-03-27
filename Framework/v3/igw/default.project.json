@@ -19,6 +19,9 @@
       "Components": {
         "$path": "../../../Games/igw/src"
       },
+      "Assets": {
+        "$className": "Folder"
+      },
       "init.cfg": {
         "$path": "../../../Games/igw/init.cfg.lua"
       },
