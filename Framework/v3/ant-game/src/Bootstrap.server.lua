@@ -73,6 +73,11 @@ local Game = require(ReplicatedStorage:WaitForChild("Game"))
 -- Register Game-level nodes
 IPC.registerNode(Game.GameClock)
 IPC.registerNode(Game.TimeHUD)
+IPC.registerNode(Game.QueenNode)
+IPC.registerNode(Game.FoodHopperNode)
+IPC.registerNode(Game.EggClutchNode)
+IPC.registerNode(Game.QueenHUD)
+IPC.registerNode(Game.ClutchHUD)
 
 Asset.buildInheritanceTree()
 
@@ -80,11 +85,14 @@ Asset.buildInheritanceTree()
 -- MODE DEFINITION
 --------------------------------------------------------------------------------
 
--- Colony mode: GameClock drives time for the ant colony simulation
+-- Colony mode: GameClock pulse drives queen feeding/egg cycle
 IPC.defineMode("Colony", {
-    nodes = { "GameClock", "TimeHUD" },
+    nodes = { "GameClock", "TimeHUD", "QueenNode", "FoodHopperNode", "EggClutchNode", "QueenHUD", "ClutchHUD" },
     wiring = {
-        GameClock = { "TimeHUD" },
+        GameClock = { "TimeHUD", "QueenNode", "EggClutchNode" },
+        QueenNode = { "FoodHopperNode", "EggClutchNode", "QueenHUD" },
+        FoodHopperNode = { "QueenNode" },
+        EggClutchNode = { "ClutchHUD" },
     },
 })
 
@@ -97,10 +105,13 @@ IPC.switchMode("Colony")
 IPC.start()
 
 --------------------------------------------------------------------------------
--- GAME CLOCK
+-- INSTANCE CREATION
 --------------------------------------------------------------------------------
 
 IPC.createInstance("GameClock", { id = "GameClock_Server" })
+IPC.createInstance("QueenNode", { id = "Queen" })
+IPC.createInstance("FoodHopperNode", { id = "FoodHopper" })
+IPC.createInstance("EggClutchNode", { id = "EggClutch" })
 
 --------------------------------------------------------------------------------
 -- CLEANUP ON SHUTDOWN

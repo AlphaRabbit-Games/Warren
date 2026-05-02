@@ -66,21 +66,26 @@ local Game = require(ReplicatedStorage:WaitForChild("Game"))
 -- NODE REGISTRATION
 --------------------------------------------------------------------------------
 
--- Client-side node
+-- Client-side nodes
 IPC.registerNode(Game.TimeHUD)
+IPC.registerNode(Game.QueenHUD)
+IPC.registerNode(Game.ClutchHUD)
 
--- Server-side node registered for cross-domain wiring resolution
+-- Server-side nodes registered for cross-domain wiring resolution
 IPC.registerNode(Game.GameClock)
+IPC.registerNode(Game.QueenNode)
+IPC.registerNode(Game.EggClutchNode)
 
 --------------------------------------------------------------------------------
 -- MODE DEFINITION
 --------------------------------------------------------------------------------
 
--- Colony mode: GameClock (server) → TimeHUD (client)
 IPC.defineMode("Colony", {
-    nodes = { "GameClock", "TimeHUD" },
+    nodes = { "GameClock", "TimeHUD", "QueenNode", "QueenHUD", "EggClutchNode", "ClutchHUD" },
     wiring = {
-        GameClock = { "TimeHUD" },
+        GameClock = { "TimeHUD", "QueenNode", "EggClutchNode" },
+        QueenNode = { "QueenHUD" },
+        EggClutchNode = { "ClutchHUD" },
     },
 })
 
@@ -89,6 +94,8 @@ IPC.defineMode("Colony", {
 --------------------------------------------------------------------------------
 
 IPC.createInstance("TimeHUD", { id = "TimeHUD_Local" })
+IPC.createInstance("QueenHUD", { id = "QueenHUD_Local" })
+IPC.createInstance("ClutchHUD", { id = "ClutchHUD_Local" })
 
 IPC.init()
 IPC.switchMode("Colony")
