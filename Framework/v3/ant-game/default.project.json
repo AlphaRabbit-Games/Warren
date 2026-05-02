@@ -1,5 +1,5 @@
 {
-  "name": "Warren",
+  "name": "AntGame",
   "tree": {
     "$className": "DataModel",
     "ReplicatedFirst": {

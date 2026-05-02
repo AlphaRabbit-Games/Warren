@@ -95,7 +95,8 @@ local TimeHUD = Node.extend(function(parent)
         local container = Instance.new("Frame")
         container.Name = "Container"
         container.Size = UDim2.new(0, 100, 0, 50)
-        container.Position = UDim2.new(0, 10, 0, 10)
+        container.AnchorPoint = Vector2.new(1, 0)
+        container.Position = UDim2.new(1, -10, 0, 10)
         container.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
         container.BackgroundTransparency = 0.5
         container.BorderSizePixel = 0
@@ -116,7 +117,7 @@ local TimeHUD = Node.extend(function(parent)
         dayLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
         dayLabel.TextSize = 14
         dayLabel.Font = Enum.Font.GothamBold
-        dayLabel.TextXAlignment = Enum.TextXAlignment.Left
+        dayLabel.TextXAlignment = Enum.TextXAlignment.Right
         dayLabel.Parent = container
 
         -- Time label (row 2)
@@ -129,7 +130,7 @@ local TimeHUD = Node.extend(function(parent)
         timeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
         timeLabel.TextSize = 14
         timeLabel.Font = Enum.Font.Gotham
-        timeLabel.TextXAlignment = Enum.TextXAlignment.Left
+        timeLabel.TextXAlignment = Enum.TextXAlignment.Right
         timeLabel.Parent = container
 
         -- Pause indicator (overlaid, hidden by default)
@@ -142,7 +143,7 @@ local TimeHUD = Node.extend(function(parent)
         pauseLabel.TextColor3 = Color3.fromRGB(255, 100, 50)
         pauseLabel.TextSize = 14
         pauseLabel.Font = Enum.Font.GothamBold
-        pauseLabel.TextXAlignment = Enum.TextXAlignment.Left
+        pauseLabel.TextXAlignment = Enum.TextXAlignment.Right
         pauseLabel.Visible = false
         pauseLabel.Parent = container
 
