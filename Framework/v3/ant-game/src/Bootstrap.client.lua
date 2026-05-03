@@ -68,24 +68,37 @@ local Game = require(ReplicatedStorage:WaitForChild("Game"))
 
 -- Client-side nodes
 IPC.registerNode(Game.TimeHUD)
-IPC.registerNode(Game.QueenHUD)
+IPC.registerNode(Game.PantryHUD)
 IPC.registerNode(Game.ClutchHUD)
+IPC.registerNode(Game.WorkerHUD)
+IPC.registerNode(Game.CommandMenuHUD)
 
 -- Server-side nodes registered for cross-domain wiring resolution
 IPC.registerNode(Game.GameClock)
-IPC.registerNode(Game.QueenNode)
+IPC.registerNode(Game.ColonyNode)
 IPC.registerNode(Game.EggClutchNode)
+IPC.registerNode(Game.FoodHopperNode)
+IPC.registerNode(Game.CommandManagerNode)
 
 --------------------------------------------------------------------------------
 -- MODE DEFINITION
 --------------------------------------------------------------------------------
 
 IPC.defineMode("Colony", {
-    nodes = { "GameClock", "TimeHUD", "QueenNode", "QueenHUD", "EggClutchNode", "ClutchHUD" },
+    nodes = {
+        "GameClock", "TimeHUD",
+        "ColonyNode", "FoodHopperNode", "EggClutchNode",
+        "PantryHUD", "ClutchHUD",
+        "WorkerHUD", "CommandManagerNode", "CommandMenuHUD",
+    },
     wiring = {
-        GameClock = { "TimeHUD", "QueenNode", "EggClutchNode" },
-        QueenNode = { "QueenHUD" },
+        GameClock = { "TimeHUD" },
+        ColonyNode = { "WorkerHUD" },
+        FoodHopperNode = { "PantryHUD" },
         EggClutchNode = { "ClutchHUD" },
+        WorkerHUD = { "CommandMenuHUD", "CommandManagerNode" },
+        CommandManagerNode = { "CommandMenuHUD" },
+        CommandMenuHUD = { "CommandManagerNode" },
     },
 })
 
@@ -94,8 +107,10 @@ IPC.defineMode("Colony", {
 --------------------------------------------------------------------------------
 
 IPC.createInstance("TimeHUD", { id = "TimeHUD_Local" })
-IPC.createInstance("QueenHUD", { id = "QueenHUD_Local" })
+IPC.createInstance("PantryHUD", { id = "PantryHUD_Local" })
 IPC.createInstance("ClutchHUD", { id = "ClutchHUD_Local" })
+IPC.createInstance("WorkerHUD", { id = "WorkerHUD_Local" })
+IPC.createInstance("CommandMenuHUD", { id = "CommandMenu_Local" })
 
 IPC.init()
 IPC.switchMode("Colony")

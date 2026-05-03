@@ -50,10 +50,13 @@ local Game = {}
 -- Game-specific node implementations
 Game.GameClock = require(script.GameClock)
 Game.TimeHUD = require(script.TimeHUD)
-Game.QueenNode = require(script.QueenNode)
+Game.ColonyNode = require(script.ColonyNode)
 Game.FoodHopperNode = require(script.FoodHopperNode)
 Game.EggClutchNode = require(script.EggClutchNode)
-Game.QueenHUD = require(script.QueenHUD)
+Game.PantryHUD = require(script.PantryHUD)
 Game.ClutchHUD = require(script.ClutchHUD)
+Game.WorkerHUD = require(script.WorkerHUD)
+Game.CommandManagerNode = require(script.CommandManagerNode)
+Game.CommandMenuHUD = require(script.CommandMenuHUD)
 
 return Game

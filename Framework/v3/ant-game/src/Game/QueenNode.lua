@@ -15,6 +15,8 @@
     Bite cycle:  every `biteRate` ticks, if energy < cap → fire onBite.
     Egg cycle:   only ticks while energy >= eggEnergyCost. After `eggInterval`
                  ticks → deduct cost, fire onEggLaid. Pauses when starving.
+    Starvation:  if a bite returns 0 energy, starvation counter increments.
+                 Resets on any successful feeding. At threshold → queen dies.
 
     ============================================================================
     SIGNALS
@@ -34,6 +36,12 @@
         eggLaid({ energy, energyCap, eggCount })
             - An egg has been produced.
 
+        queenStatus({ ... })
+            - Full state for HUD every tick.
+
+        queenDied({ starvationTicks, eggCount })
+            - Queen starved to death. Game over.
+
 --]]
 
 local Warren = require(game:GetService("ReplicatedStorage").Warren)
@@ -46,6 +54,8 @@ local Node = Warren.Node
 local LEVEL_DATA = {
     [1] = { energyCap = 100, biteRate = 3, eggEnergyCost = 50, eggInterval = 10 },
 }
+
+local STARVATION_THRESHOLD = 60  -- ticks without food before death
 
 local function getLevelData(level)
     return LEVEL_DATA[level] or LEVEL_DATA[1]
@@ -73,6 +83,10 @@ local QueenNode = Node.extend(function(parent)
                 biteCounter = 0,
                 eggCounter = 0,
 
+                -- Starvation
+                starvationTicks = 0,
+                alive = true,
+
                 -- Stats
                 eggCount = 0,
             }
@@ -94,9 +108,9 @@ local QueenNode = Node.extend(function(parent)
                 local System = self._System
                 if System and System.Debug then
                     System.Debug.info("QueenNode", string.format(
-                        "Initialized — level %d, energyCap %d, biteRate %d, eggCost %d, eggInterval %d",
+                        "Initialized — level %d, energyCap %d, biteRate %d, eggCost %d, eggInterval %d, starve at %d",
                         state.level, state.energyCap, state.biteRate,
-                        state.eggEnergyCost, state.eggInterval
+                        state.eggEnergyCost, state.eggInterval, STARVATION_THRESHOLD
                     ))
                 end
             end,
@@ -113,6 +127,29 @@ local QueenNode = Node.extend(function(parent)
                 if not data or data.isPaused then return end
 
                 local state = getState(self)
+                if not state.alive then return end
+
+                -- Starvation check
+                if state.energy <= 0 then
+                    state.starvationTicks = state.starvationTicks + 1
+
+                    if state.starvationTicks >= STARVATION_THRESHOLD then
+                        state.alive = false
+
+                        self.Out:Fire("queenDied", {
+                            starvationTicks = state.starvationTicks,
+                            eggCount = state.eggCount,
+                        })
+
+                        local System = self._System
+                        if System and System.Debug then
+                            System.Debug.warn("QueenNode", string.format(
+                                "Queen starved after %d ticks — GAME OVER",
+                                state.starvationTicks
+                            ))
+                        end
+                    end
+                end
 
                 -- Bite cycle
                 state.biteCounter = state.biteCounter + 1
@@ -159,6 +196,9 @@ local QueenNode = Node.extend(function(parent)
                     eggEnergyCost = state.eggEnergyCost,
                     eggCount = state.eggCount,
                     gestating = gestating,
+                    starvationTicks = state.starvationTicks,
+                    starvationThreshold = STARVATION_THRESHOLD,
+                    alive = state.alive,
                 })
             end,
 
@@ -166,15 +206,11 @@ local QueenNode = Node.extend(function(parent)
                 if not data or not data.energy then return end
 
                 local state = getState(self)
-                local before = state.energy
-                state.energy = math.min(state.energy + data.energy, state.energyCap)
+                if not state.alive then return end
 
-                local System = self._System
-                if System and System.Debug then
-                    System.Debug.trace("QueenNode", string.format(
-                        "Fed +%d energy → %d/%d",
-                        data.energy, state.energy, state.energyCap
-                    ))
+                if data.energy > 0 then
+                    state.energy = math.min(state.energy + data.energy, state.energyCap)
+                    state.starvationTicks = 0  -- fed successfully, reset starvation
                 end
             end,
         },
@@ -183,6 +219,7 @@ local QueenNode = Node.extend(function(parent)
             bite = {},
             eggLaid = {},
             queenStatus = {},
+            queenDied = {},
         },
     }
 end)

@@ -12,7 +12,7 @@
     This is the server entry point. It:
     1. Requires the Warren framework
     2. Configures system subsystems
-    3. Initializes the Colony mode (GameClock + TimeHUD)
+    3. Initializes the Colony mode
 
 --]]
 
@@ -73,11 +73,14 @@ local Game = require(ReplicatedStorage:WaitForChild("Game"))
 -- Register Game-level nodes
 IPC.registerNode(Game.GameClock)
 IPC.registerNode(Game.TimeHUD)
-IPC.registerNode(Game.QueenNode)
+IPC.registerNode(Game.ColonyNode)
 IPC.registerNode(Game.FoodHopperNode)
 IPC.registerNode(Game.EggClutchNode)
-IPC.registerNode(Game.QueenHUD)
+IPC.registerNode(Game.PantryHUD)
 IPC.registerNode(Game.ClutchHUD)
+IPC.registerNode(Game.WorkerHUD)
+IPC.registerNode(Game.CommandManagerNode)
+IPC.registerNode(Game.CommandMenuHUD)
 
 Asset.buildInheritanceTree()
 
@@ -85,14 +88,21 @@ Asset.buildInheritanceTree()
 -- MODE DEFINITION
 --------------------------------------------------------------------------------
 
--- Colony mode: GameClock pulse drives queen feeding/egg cycle
 IPC.defineMode("Colony", {
-    nodes = { "GameClock", "TimeHUD", "QueenNode", "FoodHopperNode", "EggClutchNode", "QueenHUD", "ClutchHUD" },
+    nodes = {
+        "GameClock", "TimeHUD",
+        "ColonyNode", "FoodHopperNode", "EggClutchNode",
+        "PantryHUD", "ClutchHUD", "WorkerHUD",
+        "CommandManagerNode", "CommandMenuHUD",
+    },
     wiring = {
-        GameClock = { "TimeHUD", "QueenNode", "EggClutchNode" },
-        QueenNode = { "FoodHopperNode", "EggClutchNode", "QueenHUD" },
-        FoodHopperNode = { "QueenNode" },
-        EggClutchNode = { "ClutchHUD" },
+        GameClock = { "TimeHUD", "ColonyNode", "EggClutchNode" },
+        ColonyNode = { "FoodHopperNode", "EggClutchNode", "WorkerHUD", "CommandManagerNode" },
+        FoodHopperNode = { "ColonyNode", "PantryHUD", "CommandManagerNode" },
+        EggClutchNode = { "ClutchHUD", "ColonyNode", "CommandManagerNode" },
+        WorkerHUD = { "CommandMenuHUD", "CommandManagerNode" },
+        CommandManagerNode = { "CommandMenuHUD", "ColonyNode" },
+        CommandMenuHUD = { "CommandManagerNode" },
     },
 })
 
@@ -108,10 +118,18 @@ IPC.start()
 -- INSTANCE CREATION
 --------------------------------------------------------------------------------
 
+-- CommandManager first so chambers can register on start
+IPC.createInstance("CommandManagerNode", { id = "CommandManager" })
 IPC.createInstance("GameClock", { id = "GameClock_Server" })
-IPC.createInstance("QueenNode", { id = "Queen" })
 IPC.createInstance("FoodHopperNode", { id = "FoodHopper" })
 IPC.createInstance("EggClutchNode", { id = "EggClutch" })
+IPC.createInstance("ColonyNode", { id = "Colony" })
+
+-- Spawn queen and starting worker
+IPC.sendTo("Colony", "spawnQueen", {})
+IPC.sendTo("Colony", "spawnWorker", {})
+
+Debug.info("Bootstrap", "Colony started — 1 queen, 1 worker, pantry empty")
 
 --------------------------------------------------------------------------------
 -- CLEANUP ON SHUTDOWN

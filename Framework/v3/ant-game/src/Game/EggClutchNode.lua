@@ -52,7 +52,7 @@ local Node = Warren.Node
 --------------------------------------------------------------------------------
 
 local DEFAULT_CAPACITY = 5
-local DEFAULT_MAX_CAPACITY = 5
+local DEFAULT_MAX_CAPACITY = 50
 local DEFAULT_HATCH_THRESHOLD = 120  -- ticks to hatch
 
 --------------------------------------------------------------------------------
@@ -118,7 +118,10 @@ local EggClutchNode = Node.extend(function(parent)
                 end
             end,
 
-            onStart = function(self) end,
+            onStart = function(self)
+                -- Fire initial status so CommandManager registers this clutch
+                fireStatus(self)
+            end,
 
             onStop = function(self)
                 cleanupState(self)
@@ -198,7 +201,7 @@ local EggClutchNode = Node.extend(function(parent)
                 fireStatus(self)
             end,
 
-            onUpgrade = function(self, data)
+            onClutchUpgrade = function(self, data)
                 if not data or not data.amount then return end
 
                 local state = getState(self)

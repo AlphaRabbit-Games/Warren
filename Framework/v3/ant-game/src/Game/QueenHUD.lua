@@ -242,6 +242,29 @@ local QueenHUD = Node.extend(function(parent)
                 if state.eggCountLabel and data.eggCount then
                     state.eggCountLabel.Text = "Eggs: " .. tostring(data.eggCount)
                 end
+
+                -- Starvation warning
+                if data.starvationTicks and data.starvationThreshold then
+                    if data.starvationTicks > 0 then
+                        if state.energyLabel then
+                            state.energyLabel.Text = string.format("STARVING %d/%d",
+                                data.starvationTicks, data.starvationThreshold)
+                            state.energyLabel.TextColor3 = Color3.fromRGB(220, 60, 40)
+                        end
+                    else
+                        if state.energyLabel then
+                            state.energyLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+                        end
+                    end
+                end
+
+                -- Dead
+                if data.alive == false then
+                    if state.energyLabel then
+                        state.energyLabel.Text = "DEAD"
+                        state.energyLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+                    end
+                end
             end,
         },
 
