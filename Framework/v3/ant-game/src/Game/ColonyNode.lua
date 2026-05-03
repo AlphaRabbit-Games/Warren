@@ -96,7 +96,7 @@ local CLASS_DATA = {
         energyCap = 100,
         metabolismRate = 1,      -- energy drained per tick
         biteRate = 3,            -- ticks between bites when idle/eating
-        starvationThreshold = 150,
+        starvationThreshold = 10,
         -- Egg laying
         eggEnergyCost = 50,
         eggInterval = 10,        -- ticks of gestation per egg
@@ -105,18 +105,23 @@ local CLASS_DATA = {
         energyCap = 60,
         metabolismRate = 1,
         biteRate = 5,
-        starvationThreshold = 150,
-        foodPerGather = 80,
+        starvationThreshold = 10,
+        maxRange = 30,
     },
 }
 
 local TASK_DEFS = {
-    layEggs = { duration = 0, cooldown = 0 },  -- continuous, handled specially
-    gather  = { duration = 20, cooldown = 5 },
-    dig     = { duration = 30, cooldown = 5 },
-    upgrade = { duration = 25, cooldown = 5 },
+    layEggs       = { duration = 0, cooldown = 10 },  -- continuous, cooldown between eggs
+    explore       = { duration = 0, cooldown = 5 },   -- duration set by FoodSourceNode
+    gatherClosest = { duration = 0, cooldown = 5 },   -- duration set by FoodSourceNode
+    gatherLargest = { duration = 0, cooldown = 5 },
+    gatherBest    = { duration = 0, cooldown = 5 },
+    dig           = { duration = 30, cooldown = 5 },
+    upgrade       = { duration = 25, cooldown = 5 },
     upgradePantry = { duration = 25, cooldown = 5 },
 }
+
+local DEFAULT_COOLDOWN = 5
 
 --------------------------------------------------------------------------------
 -- COLONY NODE
@@ -179,10 +184,14 @@ local ColonyNode = Node.extend(function(parent)
             tasksCompleted = 0,
 
             -- Class-specific
-            foodPerGather = data.foodPerGather or 0,
+            maxRange = data.maxRange or 30,
             eggEnergyCost = data.eggEnergyCost or 0,
             eggInterval = data.eggInterval or 0,
             eggCounter = 0,
+
+            -- Explore/gather state (set by FoodSourceNode)
+            pendingSourceId = nil,
+            gatherStrategy = nil,
         }
 
         state.ants[#state.ants + 1] = ant
@@ -200,9 +209,9 @@ local ColonyNode = Node.extend(function(parent)
     -- TASK MANAGEMENT
     --------------------------------------------------------------------------
 
+    -- Starts a task immediately (for tasks with known duration)
     local function assignTask(ant, taskName, targetId)
         if taskName == "layEggs" then
-            -- Continuous task — no duration/cooldown
             ant.task = "layEggs"
             ant.targetId = targetId
             ant.status = "working"
@@ -226,12 +235,34 @@ local ColonyNode = Node.extend(function(parent)
         ant.cooldownDuration = def.cooldown
     end
 
+    -- Puts ant in pending state while waiting for FoodSourceNode response
+    local function assignPendingTask(ant, taskName)
+        ant.task = taskName
+        ant.status = "pending"
+        ant.taskProgress = 0
+        ant.taskDuration = 0
+        ant.pendingSourceId = nil
+        if taskName == "gatherClosest" or taskName == "gatherLargest" or taskName == "gatherBest" then
+            ant.gatherStrategy = taskName:sub(7):lower()  -- "closest"|"largest"|"best"
+        end
+    end
+
+    -- Called when FoodSourceNode responds with distance — starts the actual trip
+    local function startTrip(ant, distance, sourceId)
+        ant.status = "working"
+        ant.taskProgress = 0
+        ant.taskDuration = distance * 2  -- round trip
+        ant.pendingSourceId = sourceId
+    end
+
     local function idleAnt(ant)
         ant.task = nil
         ant.targetId = nil
         ant.status = "idle"
         ant.taskProgress = 0
         ant.taskDuration = 0
+        ant.pendingSourceId = nil
+        ant.gatherStrategy = nil
         ant.cooldownProgress = 0
         ant.cooldownDuration = 0
         ant.eggCounter = 0
@@ -240,6 +271,8 @@ local ColonyNode = Node.extend(function(parent)
     local function startCooldown(ant)
         ant.status = "cooldown"
         ant.cooldownProgress = 0
+        local def = TASK_DEFS[ant.task]
+        ant.cooldownDuration = (def and def.cooldown) or DEFAULT_COOLDOWN
     end
 
     --------------------------------------------------------------------------
@@ -314,22 +347,37 @@ local ColonyNode = Node.extend(function(parent)
                     if not ant.alive then continue end
 
                     --------------------------------------------------------
-                    -- COOLDOWN EXIT: check before metabolism drains energy
+                    -- COOLDOWN: timer-based, eat during rest, resume when done
                     --------------------------------------------------------
-                    if ant.status == "cooldown" and ant.energy >= ant.energyCap then
-                        if ant.task then
-                            assignTask(ant, ant.task, ant.targetId)
-                        else
-                            ant.status = "idle"
+                    if ant.status == "cooldown" then
+                        ant.cooldownProgress = ant.cooldownProgress + 1
+                        if ant.cooldownProgress >= ant.cooldownDuration then
+                            if not ant.task then
+                                ant.status = "idle"
+                            elseif ant.task == "explore" then
+                                assignPendingTask(ant, "explore")
+                                self.Out:Fire("exploreRequest", {
+                                    antId = ant.id,
+                                    maxRange = ant.maxRange,
+                                })
+                            elseif ant.task == "gatherClosest" or ant.task == "gatherLargest" or ant.task == "gatherBest" then
+                                local strategy = ant.task:sub(7):lower()
+                                assignPendingTask(ant, ant.task)
+                                self.Out:Fire("gatherRequest", {
+                                    antId = ant.id,
+                                    strategy = strategy,
+                                    maxRange = ant.maxRange,
+                                })
+                            else
+                                assignTask(ant, ant.task, ant.targetId)
+                            end
                         end
                     end
 
                     --------------------------------------------------------
                     -- METABOLISM: energy drains every tick except during cooldown
                     --------------------------------------------------------
-                    if ant.status ~= "cooldown" then
-                        ant.energy = math.max(0, ant.energy - ant.metabolismRate)
-                    end
+                    ant.energy = math.max(0, ant.energy - ant.metabolismRate)
 
                     --------------------------------------------------------
                     -- STARVATION
@@ -387,7 +435,7 @@ local ColonyNode = Node.extend(function(parent)
                     end
 
                     --------------------------------------------------------
-                    -- TASK EXECUTION (working → complete → cooldown → repeat)
+                    -- TASK EXECUTION
                     --------------------------------------------------------
                     if ant.status == "working" and ant.task then
                         local completed = false
@@ -407,17 +455,33 @@ local ColonyNode = Node.extend(function(parent)
                                     })
                                 end
                             end
+                        elseif ant.task == "explore" then
+                            -- Travel-based: duration set by FoodSourceNode
+                            ant.taskProgress = ant.taskProgress + 1
+                            if ant.taskProgress >= ant.taskDuration then
+                                completed = true
+                                self.Out:Fire("exploreComplete", {
+                                    antId = ant.id,
+                                    sourceId = ant.pendingSourceId,
+                                })
+                            end
+                        elseif ant.task == "gatherClosest" or ant.task == "gatherLargest" or ant.task == "gatherBest" then
+                            -- Travel-based: duration set by FoodSourceNode
+                            ant.taskProgress = ant.taskProgress + 1
+                            if ant.taskProgress >= ant.taskDuration then
+                                completed = true
+                                self.Out:Fire("gatherComplete", {
+                                    antId = ant.id,
+                                    sourceId = ant.pendingSourceId,
+                                })
+                            end
                         else
-                            -- Duration-based tasks
+                            -- Duration-based tasks (dig, upgrade, etc)
                             ant.taskProgress = ant.taskProgress + 1
                             if ant.taskProgress >= ant.taskDuration then
                                 completed = true
 
-                                if ant.task == "gather" then
-                                    self.Out:Fire("foodGathered", {
-                                        energy = ant.foodPerGather,
-                                    })
-                                elseif ant.task == "upgrade" then
+                                if ant.task == "upgrade" then
                                     self.Out:Fire("clutchUpgrade", { amount = 1 })
                                 elseif ant.task == "upgradePantry" then
                                     self.Out:Fire("pantryUpgrade", { amount = 50 })
@@ -451,7 +515,7 @@ local ColonyNode = Node.extend(function(parent)
                             "Requesting food for %d hungry ants", hungryCount
                         ))
                     end
-                    self.Out:Fire("colonyBite", { count = hungryCount })
+                    self.Out:Fire("colonyBite", { count = hungryCount, colonySize = #state.ants })
                 end
 
                 -- Remove dead ants (reverse order)
@@ -523,6 +587,30 @@ local ColonyNode = Node.extend(function(parent)
                     return
                 end
 
+                -- Explore/gather: request from FoodSourceNode (async)
+                if data.task == "explore" then
+                    assignPendingTask(ant, "explore")
+                    self.Out:Fire("exploreRequest", {
+                        antId = ant.id,
+                        maxRange = ant.maxRange,
+                    })
+                    fireStatus(self)
+                    return
+                end
+
+                if data.task == "gatherClosest" or data.task == "gatherLargest" or data.task == "gatherBest" then
+                    local strategy = data.task:sub(7):lower()
+                    assignPendingTask(ant, data.task)
+                    self.Out:Fire("gatherRequest", {
+                        antId = ant.id,
+                        strategy = strategy,
+                        maxRange = ant.maxRange,
+                    })
+                    fireStatus(self)
+                    return
+                end
+
+                -- All other tasks start immediately
                 assignTask(ant, data.task, data.targetId)
 
                 local System = self._System
@@ -563,6 +651,75 @@ local ColonyNode = Node.extend(function(parent)
                     end
                     fireStatus(self)
                 end
+            end,
+
+            -- FoodSourceNode responses
+            onExploreAssigned = function(self, data)
+                if not data or not data.antId then return end
+                local state = getState(self)
+                local ant = findAnt(state, data.antId)
+                if not ant or not ant.alive then return end
+
+                startTrip(ant, data.distance, data.sourceId)
+
+                local System = self._System
+                if System and System.Debug then
+                    System.Debug.info("ColonyNode", string.format(
+                        "%s exploring — distance %d, %d ticks round trip",
+                        ant.name, data.distance, data.distance * 2
+                    ))
+                end
+                fireStatus(self)
+            end,
+
+            onExploreFailed = function(self, data)
+                if not data or not data.antId then return end
+                local state = getState(self)
+                local ant = findAnt(state, data.antId)
+                if not ant or not ant.alive then return end
+
+                idleAnt(ant)
+                local System = self._System
+                if System and System.Debug then
+                    System.Debug.info("ColonyNode", string.format(
+                        "%s explore failed — nothing in range, idled", ant.name
+                    ))
+                end
+                fireStatus(self)
+            end,
+
+            onGatherAssigned = function(self, data)
+                if not data or not data.antId then return end
+                local state = getState(self)
+                local ant = findAnt(state, data.antId)
+                if not ant or not ant.alive then return end
+
+                startTrip(ant, data.distance, data.sourceId)
+
+                local System = self._System
+                if System and System.Debug then
+                    System.Debug.info("ColonyNode", string.format(
+                        "%s gathering from source #%d — distance %d, %d ticks",
+                        ant.name, data.sourceId, data.distance, data.distance * 2
+                    ))
+                end
+                fireStatus(self)
+            end,
+
+            onGatherFailed = function(self, data)
+                if not data or not data.antId then return end
+                local state = getState(self)
+                local ant = findAnt(state, data.antId)
+                if not ant or not ant.alive then return end
+
+                idleAnt(ant)
+                local System = self._System
+                if System and System.Debug then
+                    System.Debug.info("ColonyNode", string.format(
+                        "%s gather failed — no sources available, idled", ant.name
+                    ))
+                end
+                fireStatus(self)
             end,
 
             onFoodDispensed = function(self, data)
@@ -617,7 +774,10 @@ local ColonyNode = Node.extend(function(parent)
             colonyStatus = {},
             colonyBite = {},
             eggLaid = {},
-            foodGathered = {},
+            exploreRequest = {},
+            exploreComplete = {},
+            gatherRequest = {},
+            gatherComplete = {},
             clutchUpgrade = {},
             pantryUpgrade = {},
             tunnelDug = {},

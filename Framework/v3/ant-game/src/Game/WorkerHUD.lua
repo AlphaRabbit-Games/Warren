@@ -83,7 +83,10 @@ local WorkerHUD = Node.extend(function(parent)
     }
 
     local TASK_LABELS = {
-        gather = "Gathering",
+        explore = "Exploring",
+        gatherClosest = "Gather Near",
+        gatherLargest = "Gather Big",
+        gatherBest = "Gather Best",
         dig = "Digging",
         upgrade = "Upgrading",
         upgradePantry = "Upgrading Pantry",

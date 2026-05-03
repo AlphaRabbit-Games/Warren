@@ -51,7 +51,10 @@ local MAX_WORKERS_PER_UPGRADE = 2  -- max ants on upgrade tasks per target
 
 -- Tasks with no worker cap (gather, dig, layEggs)
 local UNCAPPED_TASKS = {
-    gather = true,
+    explore = true,
+    gatherClosest = true,
+    gatherLargest = true,
+    gatherBest = true,
     dig = true,
     layEggs = true,
 }
@@ -72,6 +75,10 @@ local CommandManagerNode = Node.extend(function(parent)
                 ants = {},
                 -- Currently selected ant (for class-based commands)
                 selectedAntClass = nil,
+                -- Food source tracking
+                hasDiscoveredSources = false,
+                discoveredSourceCount = 0,
+                undiscoveredSourceCount = 0,
             }
         end
         return instanceStates[self.id]
@@ -88,8 +95,10 @@ local CommandManagerNode = Node.extend(function(parent)
     local function countAssignments(state, task, targetId)
         local count = 0
         for _, a in ipairs(state.ants) do
-            if a.task == task and a.targetId == targetId and a.status ~= "idle" then
-                count = count + 1
+            if a.task == task and a.status ~= "idle" then
+                if targetId == nil or a.targetId == targetId then
+                    count = count + 1
+                end
             end
         end
         return count
@@ -112,13 +121,38 @@ local CommandManagerNode = Node.extend(function(parent)
             }
         end
 
-        -- Gather food — always available, uncapped
-        local gatherAssigned = countAssignments(state, "gather", "FoodHopper")
+        -- Explore — always available, uncapped
+        local exploreAssigned = countAssignments(state, "explore", nil)
         commands[#commands + 1] = {
-            task = "gather",
-            targetId = "FoodHopper",
-            label = string.format("Gather Food (%d ants)", gatherAssigned),
+            task = "explore",
+            targetId = nil,
+            label = string.format("Explore (%d ants, %d undiscovered)",
+                exploreAssigned, state.undiscoveredSourceCount),
         }
+
+        -- Gather strategies — only when discovered sources exist
+        if state.hasDiscoveredSources then
+            local closestAssigned = countAssignments(state, "gatherClosest", nil)
+            commands[#commands + 1] = {
+                task = "gatherClosest",
+                targetId = nil,
+                label = string.format("Gather Closest (%d ants)", closestAssigned),
+            }
+
+            local largestAssigned = countAssignments(state, "gatherLargest", nil)
+            commands[#commands + 1] = {
+                task = "gatherLargest",
+                targetId = nil,
+                label = string.format("Gather Largest (%d ants)", largestAssigned),
+            }
+
+            local bestAssigned = countAssignments(state, "gatherBest", nil)
+            commands[#commands + 1] = {
+                task = "gatherBest",
+                targetId = nil,
+                label = string.format("Gather Best (%d ants)", bestAssigned),
+            }
+        end
 
         -- Dig tunnel — always available, uncapped
         local digAssigned = countAssignments(state, "dig", "colony")
@@ -243,6 +277,16 @@ local CommandManagerNode = Node.extend(function(parent)
                 }
 
                 checkInvalidations(self)
+                broadcastCommands(self)
+            end,
+
+            onFoodSourceStatus = function(self, data)
+                if not data then return end
+
+                local state = getState(self)
+                state.discoveredSourceCount = data.discovered and #data.discovered or 0
+                state.undiscoveredSourceCount = data.undiscoveredCount or 0
+                state.hasDiscoveredSources = state.discoveredSourceCount > 0
                 broadcastCommands(self)
             end,
 

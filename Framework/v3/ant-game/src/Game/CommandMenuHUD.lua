@@ -81,7 +81,10 @@ local CommandMenuHUD = Node.extend(function(parent)
     local MENU_WIDTH = 260
 
     local TASK_COLORS = {
-        gather = Color3.fromRGB(60, 140, 60),
+        explore = Color3.fromRGB(100, 160, 180),
+        gatherClosest = Color3.fromRGB(60, 140, 60),
+        gatherLargest = Color3.fromRGB(80, 160, 40),
+        gatherBest = Color3.fromRGB(40, 180, 80),
         dig = Color3.fromRGB(140, 100, 60),
         upgrade = Color3.fromRGB(60, 100, 180),
         upgradePantry = Color3.fromRGB(100, 140, 60),

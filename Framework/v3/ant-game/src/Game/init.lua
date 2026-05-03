@@ -58,5 +58,7 @@ Game.ClutchHUD = require(script.ClutchHUD)
 Game.WorkerHUD = require(script.WorkerHUD)
 Game.CommandManagerNode = require(script.CommandManagerNode)
 Game.CommandMenuHUD = require(script.CommandMenuHUD)
+Game.FoodSourceNode = require(script.FoodSourceNode)
+Game.FoodSourceHUD = require(script.FoodSourceHUD)
 
 return Game

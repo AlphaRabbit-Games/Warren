@@ -1,6 +1,6 @@
 --[[
     Ant Colony Simulation — FoodHopperNode (Pantry)
-    Server-side food storage chamber.
+    Server-side food storage chamber with blended nutrition.
 
     Copyright (c) 2025 Adam Stearns / Pure Fiction Records LLC
     All rights reserved.
@@ -9,19 +9,20 @@
     OVERVIEW
     ============================================================================
 
-    A pantry that stores food with finite capacity. Starts empty.
-    Workers deposit food via gather tasks. Queen and idle workers
-    draw from it via bite signals. Can be upgraded to increase capacity.
+    A pantry that stores food by type. Energy per bite is a weighted average
+    of all food types in the pantry, divided by colony size. This means a
+    pantry full of high-quality food feeds more per bite, and larger colonies
+    get less per bite (pressure to gather more).
 
     ============================================================================
     SIGNALS
     ============================================================================
 
     IN (receives):
-        onBite()
-            - Queen or idle worker requests food. Dispenses if stock > 0.
+        onColonyBite({ count, colonySize })
+            - Colony requests food. Dispenses blended energy.
 
-        onFoodGathered({ energy })
+        onFoodGathered({ energy, foodType })
             - Worker deposits food from a gather task.
 
         onPantryUpgrade({ amount })
@@ -29,9 +30,9 @@
 
     OUT (sends):
         foodDispensed({ energy })
-            - Energy delivered to the requester.
+            - Energy delivered to the colony.
 
-        hopperStatus({ stock, capacity, maxCapacity, energyPerBite })
+        hopperStatus({ stock, capacity, maxCapacity, energyPerBite, contents })
             - Current state, fired after any change.
 
 --]]
@@ -43,7 +44,6 @@ local Node = Warren.Node
 -- DEFAULTS
 --------------------------------------------------------------------------------
 
-local DEFAULT_ENERGY_PER_BITE = 20
 local DEFAULT_CAPACITY = 200
 local DEFAULT_MAX_CAPACITY = 1000
 
@@ -57,10 +57,12 @@ local FoodHopperNode = Node.extend(function(parent)
     local function getState(self)
         if not instanceStates[self.id] then
             instanceStates[self.id] = {
-                stock = 0,
+                -- Stock per food type: { [foodType] = energy }
+                contents = {},
+                totalStock = 0,
                 capacity = DEFAULT_CAPACITY,
                 maxCapacity = DEFAULT_MAX_CAPACITY,
-                energyPerBite = DEFAULT_ENERGY_PER_BITE,
+                colonySize = 1,
             }
         end
         return instanceStates[self.id]
@@ -70,13 +72,67 @@ local FoodHopperNode = Node.extend(function(parent)
         instanceStates[self.id] = nil
     end
 
+    --------------------------------------------------------------------------
+    -- STOCK HELPERS
+    --------------------------------------------------------------------------
+
+    local function recalcTotal(state)
+        local total = 0
+        for _, amount in pairs(state.contents) do
+            total = total + amount
+        end
+        state.totalStock = total
+    end
+
+    -- Weighted average energy across all food types, divided by colony size
+    local function computeEnergyPerBite(state)
+        if state.totalStock <= 0 or state.colonySize <= 0 then
+            return 0
+        end
+        -- The total stock IS the total energy. Per bite = total / colony size.
+        -- But we cap it so one bite doesn't drain everything.
+        return math.max(1, math.floor(state.totalStock / state.colonySize))
+    end
+
+    -- Drain `amount` energy from contents proportionally
+    local function drainProportional(state, amount)
+        if state.totalStock <= 0 then return 0 end
+
+        local actual = math.min(amount, state.totalStock)
+        local ratio = actual / state.totalStock
+
+        for foodType, stored in pairs(state.contents) do
+            local drain = stored * ratio
+            state.contents[foodType] = stored - drain
+            if state.contents[foodType] < 0.01 then
+                state.contents[foodType] = nil
+            end
+        end
+
+        recalcTotal(state)
+        return actual
+    end
+
     local function fireStatus(self)
         local state = getState(self)
+
+        -- Build contents summary for HUD
+        local contentsList = {}
+        for foodType, amount in pairs(state.contents) do
+            if amount > 0 then
+                contentsList[#contentsList + 1] = {
+                    type = foodType,
+                    amount = math.floor(amount),
+                }
+            end
+        end
+
         self.Out:Fire("hopperStatus", {
-            stock = state.stock,
+            stock = math.floor(state.totalStock),
             capacity = state.capacity,
             maxCapacity = state.maxCapacity,
-            energyPerBite = state.energyPerBite,
+            energyPerBite = computeEnergyPerBite(state),
+            contents = contentsList,
         })
     end
 
@@ -90,15 +146,13 @@ local FoodHopperNode = Node.extend(function(parent)
                 local System = self._System
                 if System and System.Debug then
                     System.Debug.info("FoodHopperNode", string.format(
-                        "Initialized — stock %d/%d, %d energy per bite",
-                        state.stock, state.capacity, state.energyPerBite
+                        "Initialized — stock %d/%d (blended pantry)",
+                        state.totalStock, state.capacity
                     ))
                 end
-
             end,
 
             onStart = function(self)
-                -- Fire initial status after wiring is connected
                 fireStatus(self)
             end,
 
@@ -111,16 +165,27 @@ local FoodHopperNode = Node.extend(function(parent)
             onColonyBite = function(self, data)
                 local state = getState(self)
                 local count = (data and data.count) or 1
+
+                -- Update colony size for bite calculation
+                if data and data.colonySize then
+                    state.colonySize = data.colonySize
+                end
+
+                if state.totalStock <= 0 then
+                    self.Out:Fire("foodDispensed", { energy = 0 })
+                    return
+                end
+
+                local perBite = computeEnergyPerBite(state)
                 local totalDispensed = 0
 
                 for _ = 1, count do
-                    if state.stock <= 0 then break end
-                    local amount = math.min(state.energyPerBite, state.stock)
-                    state.stock = state.stock - amount
+                    if state.totalStock <= 0 then break end
+                    local amount = drainProportional(state, perBite)
                     totalDispensed = totalDispensed + amount
                 end
 
-                self.Out:Fire("foodDispensed", { energy = totalDispensed })
+                self.Out:Fire("foodDispensed", { energy = math.floor(totalDispensed) })
                 if totalDispensed > 0 then
                     fireStatus(self)
                 end
@@ -130,14 +195,28 @@ local FoodHopperNode = Node.extend(function(parent)
                 if not data or not data.energy then return end
 
                 local state = getState(self)
-                local before = state.stock
-                state.stock = math.min(state.stock + data.energy, state.capacity)
+                local foodType = data.foodType or "unknown"
+                local spaceLeft = state.capacity - state.totalStock
+
+                if spaceLeft <= 0 then
+                    local System = self._System
+                    if System and System.Debug then
+                        System.Debug.warn("FoodHopperNode", "Pantry full — food wasted!")
+                    end
+                    return
+                end
+
+                local deposited = math.min(data.energy, spaceLeft)
+                state.contents[foodType] = (state.contents[foodType] or 0) + deposited
+                recalcTotal(state)
 
                 local System = self._System
                 if System and System.Debug then
                     System.Debug.info("FoodHopperNode", string.format(
-                        "Food deposited — +%d, stock %d → %d/%d",
-                        data.energy, before, state.stock, state.capacity
+                        "Deposited %d %s — stock %d/%d, bite value %d",
+                        deposited, foodType,
+                        math.floor(state.totalStock), state.capacity,
+                        computeEnergyPerBite(state)
                     ))
                 end
 
