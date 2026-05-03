@@ -111,15 +111,36 @@ local CLASS_DATA = {
 }
 
 local TASK_DEFS = {
-    layEggs       = { duration = 0, cooldown = 10 },  -- continuous, cooldown between eggs
-    explore       = { duration = 0, cooldown = 5 },   -- duration set by FoodSourceNode
-    gatherClosest = { duration = 0, cooldown = 5 },   -- duration set by FoodSourceNode
-    gatherLargest = { duration = 0, cooldown = 5 },
-    gatherBest    = { duration = 0, cooldown = 5 },
-    dig           = { duration = 30, cooldown = 5 },
-    upgrade       = { duration = 25, cooldown = 5 },
-    upgradePantry = { duration = 25, cooldown = 5 },
+    layEggs          = { duration = 0, cooldown = 10 },
+    explore          = { duration = 0, cooldown = 5 },
+    gatherClosest    = { duration = 0, cooldown = 5 },
+    gatherLargest    = { duration = 0, cooldown = 5 },
+    gatherBest       = { duration = 0, cooldown = 5 },
+    gatherEfficiency = { duration = 0, cooldown = 5 },
+    gatherEndurance  = { duration = 0, cooldown = 5 },
+    gatherEggBuff    = { duration = 0, cooldown = 5 },
+    dig              = { duration = 30, cooldown = 5 },
+    upgrade          = { duration = 25, cooldown = 5 },
+    upgradePantry    = { duration = 25, cooldown = 5 },
 }
+
+-- Helper: is this a gather task?
+local GATHER_TASKS = {
+    gatherClosest = "closest",
+    gatherLargest = "largest",
+    gatherBest = "best",
+    gatherEfficiency = "efficiency",
+    gatherEndurance = "endurance",
+    gatherEggBuff = "eggbuff",
+}
+
+local function isGatherTask(taskName)
+    return GATHER_TASKS[taskName] ~= nil
+end
+
+local function getGatherStrategy(taskName)
+    return GATHER_TASKS[taskName]
+end
 
 local DEFAULT_COOLDOWN = 5
 
@@ -141,6 +162,12 @@ local ColonyNode = Node.extend(function(parent)
                     maxRange = CLASS_DATA.worker.maxRange,
                     energyCap = CLASS_DATA.worker.energyCap,
                     metabolismRate = CLASS_DATA.worker.metabolismRate,
+                },
+                -- Current pantry buff profile (updated on every feeding)
+                buffProfile = {
+                    efficiency = 0,
+                    endurance = 0,
+                    eggProduction = 0,
                 },
             }
         end
@@ -171,10 +198,20 @@ local ColonyNode = Node.extend(function(parent)
             class = class,
             alive = true,
 
-            -- Energy
-            energy = energyCap,  -- start full
+            -- Base stats (never modified by buffs)
+            baseMetabolismRate = metabolismRate,
+            baseMaxRange = maxRange,
+            baseEnergyCap = energyCap,
+            baseEggEnergyCost = data.eggEnergyCost or 0,
+            baseEggInterval = data.eggInterval or 0,
+
+            -- Effective stats (base + buff modifiers, recalculated on feeding)
+            energy = energyCap,
             energyCap = energyCap,
             metabolismRate = metabolismRate,
+            maxRange = maxRange,
+            eggEnergyCost = data.eggEnergyCost or 0,
+            eggInterval = data.eggInterval or 0,
 
             -- Eating
             biteRate = data.biteRate,
@@ -187,17 +224,14 @@ local ColonyNode = Node.extend(function(parent)
             -- Task
             task = nil,
             targetId = nil,
-            status = "idle",    -- "idle"|"working"|"cooldown"
+            status = "idle",
             taskProgress = 0,
             taskDuration = 0,
             cooldownProgress = 0,
             cooldownDuration = 0,
             tasksCompleted = 0,
 
-            -- Class-specific
-            maxRange = maxRange,
-            eggEnergyCost = data.eggEnergyCost or 0,
-            eggInterval = data.eggInterval or 0,
+            -- Egg gestation
             eggCounter = 0,
 
             -- Explore/gather state (set by FoodSourceNode)
@@ -207,6 +241,30 @@ local ColonyNode = Node.extend(function(parent)
 
         state.ants[#state.ants + 1] = ant
         return ant
+    end
+
+    -- Recalculate effective stats for all ants from base + buff profile
+    local function applyBuffs(state)
+        local buff = state.buffProfile
+        for _, ant in ipairs(state.ants) do
+            if not ant.alive then continue end
+
+            -- Efficiency buff: reduces metabolism (lower = better)
+            ant.metabolismRate = ant.baseMetabolismRate * math.max(0.2, 1 - buff.efficiency)
+
+            -- Endurance buff: increases range and energy cap (higher = better)
+            ant.maxRange = math.floor(ant.baseMaxRange * (1 + buff.endurance))
+            local newCap = math.floor(ant.baseEnergyCap * (1 + buff.endurance))
+            if newCap > ant.energyCap then
+                ant.energyCap = newCap  -- only increase, don't shrink below current energy
+            end
+
+            -- Egg production buff: reduces interval and cost (queen only)
+            if ant.class == "queen" then
+                ant.eggInterval = math.max(3, math.floor(ant.baseEggInterval * math.max(0.3, 1 - buff.eggProduction)))
+                ant.eggEnergyCost = math.max(10, math.floor(ant.baseEggEnergyCost * math.max(0.3, 1 - buff.eggProduction)))
+            end
+        end
     end
 
     local function findAnt(state, antId)
@@ -254,7 +312,7 @@ local ColonyNode = Node.extend(function(parent)
         ant.taskDuration = 0
         ant.pendingSourceId = nil
         if taskName == "gatherClosest" or taskName == "gatherLargest" or taskName == "gatherBest" then
-            ant.gatherStrategy = taskName:sub(7):lower()  -- "closest"|"largest"|"best"
+            ant.gatherStrategy = getGatherStrategy(taskName)  -- "closest"|"largest"|"best"
         end
     end
 
@@ -321,7 +379,10 @@ local ColonyNode = Node.extend(function(parent)
             end
         end
 
-        self.Out:Fire("colonyStatus", { ants = antList })
+        self.Out:Fire("colonyStatus", {
+            ants = antList,
+            buffProfile = state.buffProfile,
+        })
     end
 
     return {
@@ -371,8 +432,8 @@ local ColonyNode = Node.extend(function(parent)
                                     antId = ant.id,
                                     maxRange = ant.maxRange,
                                 })
-                            elseif ant.task == "gatherClosest" or ant.task == "gatherLargest" or ant.task == "gatherBest" then
-                                local strategy = ant.task:sub(7):lower()
+                            elseif isGatherTask(ant.task) then
+                                local strategy = getGatherStrategy(ant.task)
                                 assignPendingTask(ant, ant.task)
                                 self.Out:Fire("gatherRequest", {
                                     antId = ant.id,
@@ -477,7 +538,7 @@ local ColonyNode = Node.extend(function(parent)
                                 })
                                 self.Out:Fire("tripComplete", { antId = ant.id })
                             end
-                        elseif ant.task == "gatherClosest" or ant.task == "gatherLargest" or ant.task == "gatherBest" then
+                        elseif isGatherTask(ant.task) then
                             -- Travel-based: duration set by FoodSourceNode
                             ant.taskProgress = ant.taskProgress + 1
                             if ant.taskProgress >= ant.taskDuration then
@@ -611,8 +672,8 @@ local ColonyNode = Node.extend(function(parent)
                     return
                 end
 
-                if data.task == "gatherClosest" or data.task == "gatherLargest" or data.task == "gatherBest" then
-                    local strategy = data.task:sub(7):lower()
+                if isGatherTask(data.task) then
+                    local strategy = getGatherStrategy(data.task)
                     assignPendingTask(ant, data.task)
                     self.Out:Fire("gatherRequest", {
                         antId = ant.id,
@@ -747,14 +808,19 @@ local ColonyNode = Node.extend(function(parent)
                     state.hatchlingStats.metabolismRate = data.hatchlingStats.metabolismRate or state.hatchlingStats.metabolismRate
                 end
 
-                -- Update queen's egg stats
+                -- Update queen's base egg stats (buffs apply on top)
                 if data.queenStats then
                     for _, ant in ipairs(state.ants) do
                         if ant.alive and ant.class == "queen" then
-                            ant.eggInterval = data.queenStats.eggInterval or ant.eggInterval
-                            ant.eggEnergyCost = data.queenStats.eggEnergyCost or ant.eggEnergyCost
+                            ant.baseEggInterval = data.queenStats.eggInterval or ant.baseEggInterval
+                            ant.baseEggEnergyCost = data.queenStats.eggEnergyCost or ant.baseEggEnergyCost
+                            -- Apply current buffs to get effective stats
+                            ant.eggInterval = ant.baseEggInterval
+                            ant.eggEnergyCost = ant.baseEggEnergyCost
                         end
                     end
+                    -- Reapply buffs to recalculate effective stats
+                    applyBuffs(state)
                 end
 
                 local System = self._System
@@ -812,6 +878,21 @@ local ColonyNode = Node.extend(function(parent)
                         System.Debug.info("ColonyNode", string.format(
                             "Fed %s +%d → %d/%d",
                             ant.name, amount, ant.energy, ant.energyCap
+                        ))
+                    end
+                end
+
+                -- Update buff profile from pantry and apply to all ants
+                if data.buffProfile then
+                    state.buffProfile = data.buffProfile
+                    applyBuffs(state)
+
+                    if System and System.Debug then
+                        System.Debug.trace("ColonyNode", string.format(
+                            "Buffs — eff:%.2f end:%.2f egg:%.2f",
+                            state.buffProfile.efficiency,
+                            state.buffProfile.endurance,
+                            state.buffProfile.eggProduction
                         ))
                     end
                 end

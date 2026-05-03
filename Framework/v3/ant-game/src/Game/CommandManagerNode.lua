@@ -52,6 +52,9 @@ local TASK_CAPS = {
     gatherClosest = 999,
     gatherLargest = 999,
     gatherBest = 999,
+    gatherEfficiency = 999,
+    gatherEndurance = 999,
+    gatherEggBuff = 999,
     dig = 999,
     layEggs = 999,
     upgrade = 2,
@@ -156,7 +159,34 @@ local CommandManagerNode = Node.extend(function(parent)
                 commands[#commands + 1] = {
                     task = "gatherBest",
                     targetId = nil,
-                    label = string.format("Gather Best (%d ants)", bestAssigned),
+                    label = string.format("Gather Best Energy (%d ants)", bestAssigned),
+                }
+            end
+
+            local effAssigned = countAssignments(state, "gatherEfficiency", nil)
+            if effAssigned < TASK_CAPS.gatherEfficiency then
+                commands[#commands + 1] = {
+                    task = "gatherEfficiency",
+                    targetId = nil,
+                    label = string.format("Gather Efficiency (%d ants)", effAssigned),
+                }
+            end
+
+            local endAssigned = countAssignments(state, "gatherEndurance", nil)
+            if endAssigned < TASK_CAPS.gatherEndurance then
+                commands[#commands + 1] = {
+                    task = "gatherEndurance",
+                    targetId = nil,
+                    label = string.format("Gather Endurance (%d ants)", endAssigned),
+                }
+            end
+
+            local eggAssigned = countAssignments(state, "gatherEggBuff", nil)
+            if eggAssigned < TASK_CAPS.gatherEggBuff then
+                commands[#commands + 1] = {
+                    task = "gatherEggBuff",
+                    targetId = nil,
+                    label = string.format("Gather Egg Buff (%d ants)", eggAssigned),
                 }
             end
         end

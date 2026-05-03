@@ -48,6 +48,22 @@ local DEFAULT_CAPACITY = 200
 local DEFAULT_MAX_CAPACITY = 1000
 
 --------------------------------------------------------------------------------
+-- BUFF DEFINITIONS
+--------------------------------------------------------------------------------
+-- Buff power is inverse to nutrition tier: crumbs buff hard, honeydew barely.
+-- Each food type buffs specific stats. Insect buffs all stats at medium power.
+-- Max buff per stat is capped at the buffPower value (0.0 - 1.0 scale after
+-- weighting by pantry ratio).
+
+local FOOD_BUFFS = {
+    crumb    = { buffPower = 0.50, stats = { efficiency = 1.0 } },
+    seed     = { buffPower = 0.40, stats = { endurance = 1.0 } },
+    insect   = { buffPower = 0.30, stats = { efficiency = 0.33, endurance = 0.33, eggProduction = 0.34 } },
+    fruit    = { buffPower = 0.20, stats = { eggProduction = 1.0 } },
+    honeydew = { buffPower = 0.10, stats = {} },
+}
+
+--------------------------------------------------------------------------------
 -- FOOD HOPPER NODE
 --------------------------------------------------------------------------------
 
@@ -113,6 +129,25 @@ local FoodHopperNode = Node.extend(function(parent)
         return actual
     end
 
+    -- Compute buff profile from pantry food mix
+    local function computeBuffProfile(state)
+        local buffs = { efficiency = 0, endurance = 0, eggProduction = 0 }
+
+        if state.totalStock <= 0 then return buffs end
+
+        for foodType, amount in pairs(state.contents) do
+            local def = FOOD_BUFFS[foodType]
+            if def then
+                local ratio = amount / state.totalStock  -- fraction of pantry this type represents
+                for stat, weight in pairs(def.stats) do
+                    buffs[stat] = buffs[stat] + (ratio * def.buffPower * weight)
+                end
+            end
+        end
+
+        return buffs
+    end
+
     local function fireStatus(self)
         local state = getState(self)
 
@@ -133,6 +168,7 @@ local FoodHopperNode = Node.extend(function(parent)
             maxCapacity = state.maxCapacity,
             energyPerBite = computeEnergyPerBite(state),
             contents = contentsList,
+            buffProfile = computeBuffProfile(state),
         })
     end
 
@@ -185,7 +221,10 @@ local FoodHopperNode = Node.extend(function(parent)
                     totalDispensed = totalDispensed + amount
                 end
 
-                self.Out:Fire("foodDispensed", { energy = math.floor(totalDispensed) })
+                self.Out:Fire("foodDispensed", {
+                    energy = math.floor(totalDispensed),
+                    buffProfile = computeBuffProfile(state),
+                })
                 if totalDispensed > 0 then
                     fireStatus(self)
                 end

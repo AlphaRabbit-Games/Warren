@@ -71,12 +71,18 @@ local Node = Warren.Node
 -- Food type definitions (energyPerGather computed from formula at spawn time)
 -- nutritionTier: multiplier on base energy (higher tier = more nutritious)
 local FOOD_TYPES = {
-    { type = "crumb",    nutritionTier = 1, pileRange = { 10, 15 }, distanceRange = { 5, 15 },   weight = 30 },
-    { type = "seed",     nutritionTier = 2, pileRange = { 10, 20 }, distanceRange = { 10, 25 },  weight = 25 },
-    { type = "insect",   nutritionTier = 3, pileRange = { 10, 25 }, distanceRange = { 20, 45 },  weight = 20 },
-    { type = "fruit",    nutritionTier = 4, pileRange = { 10, 30 }, distanceRange = { 35, 70 },  weight = 15 },
-    { type = "honeydew", nutritionTier = 5, pileRange = { 10, 35 }, distanceRange = { 50, 100 }, weight = 10 },
+    { type = "crumb",    nutritionTier = 1, pileRange = { 10, 15 }, distanceRange = { 5, 15 },   weight = 30, buffStat = "efficiency",     buffPower = 0.50 },
+    { type = "seed",     nutritionTier = 2, pileRange = { 10, 20 }, distanceRange = { 10, 25 },  weight = 25, buffStat = "endurance",       buffPower = 0.40 },
+    { type = "insect",   nutritionTier = 3, pileRange = { 10, 25 }, distanceRange = { 20, 45 },  weight = 20, buffStat = "all",             buffPower = 0.30 },
+    { type = "fruit",    nutritionTier = 4, pileRange = { 10, 30 }, distanceRange = { 35, 70 },  weight = 15, buffStat = "eggProduction",   buffPower = 0.20 },
+    { type = "honeydew", nutritionTier = 5, pileRange = { 10, 35 }, distanceRange = { 50, 100 }, weight = 10, buffStat = "none",            buffPower = 0.00 },
 }
+
+-- Lookup buff power by food type name
+local BUFF_POWER_BY_TYPE = {}
+for _, ft in ipairs(FOOD_TYPES) do
+    BUFF_POWER_BY_TYPE[ft.type] = { stat = ft.buffStat, power = ft.buffPower }
+end
 
 -- Break-even formula:
 --   energyPerGather = colonySize * metabolismRate * (distance * 2 + cooldown) * difficultyMultiplier * nutritionTier
@@ -162,6 +168,8 @@ local FoodSourceNode = Node.extend(function(parent)
             remaining = randomInRange(state.rng, ft.pileRange[1], ft.pileRange[2]),
             distance = distance,
             discovered = false,
+            buffStat = ft.buffStat,
+            buffPower = ft.buffPower,
         }
 
         state.sources[#state.sources + 1] = source
@@ -188,6 +196,13 @@ local FoodSourceNode = Node.extend(function(parent)
 
     local function findByStrategy(state, strategy, maxRange)
         local best = nil
+        -- Buff strategies target specific buff stats
+        local targetBuffStat = nil
+        if strategy == "efficiency" then targetBuffStat = "efficiency"
+        elseif strategy == "endurance" then targetBuffStat = "endurance"
+        elseif strategy == "eggbuff" then targetBuffStat = "eggProduction"
+        end
+
         for _, s in ipairs(state.sources) do
             if s.discovered and s.remaining > 0 then
                 if not maxRange or s.distance <= maxRange then
@@ -199,6 +214,11 @@ local FoodSourceNode = Node.extend(function(parent)
                         if s.remaining > best.remaining then best = s end
                     elseif strategy == "best" then
                         if s.energyPerGather > best.energyPerGather then best = s end
+                    elseif targetBuffStat then
+                        -- Pick source with highest buff power for target stat
+                        local sBuff = (s.buffStat == targetBuffStat or s.buffStat == "all") and s.buffPower or 0
+                        local bestBuff = (best.buffStat == targetBuffStat or best.buffStat == "all") and best.buffPower or 0
+                        if sBuff > bestBuff then best = s end
                     end
                 end
             end

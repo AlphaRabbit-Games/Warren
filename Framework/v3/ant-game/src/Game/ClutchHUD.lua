@@ -104,11 +104,11 @@ local ClutchHUD = Node.extend(function(parent)
         screenGui.DisplayOrder = 10
         screenGui.Parent = playerGui
 
-        -- Position below PantryHUD (TimeHUD 50+10 + gap 8 + PantryHUD 66 + gap 8 = 142)
+        -- Position below PantryHUD (TimeHUD 50+10 + gap 8 + PantryHUD 86 + gap 8 = 162)
         local container = Instance.new("Frame")
         container.Name = "Container"
         container.AnchorPoint = Vector2.new(1, 0)
-        container.Position = UDim2.new(1, -10, 0, 142)
+        container.Position = UDim2.new(1, -10, 0, 162)
         container.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
         container.BackgroundTransparency = 0.5
         container.BorderSizePixel = 0

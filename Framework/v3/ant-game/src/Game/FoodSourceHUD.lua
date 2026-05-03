@@ -56,10 +56,10 @@ local FoodSourceHUD = Node.extend(function(parent)
     end
 
     local PADDING = 8
-    local ROW_HEIGHT = 28
+    local ROW_HEIGHT = 38
     local ROW_GAP = 2
     local CONTAINER_WIDTH = 140
-    local LIST_HEIGHT = 150
+    local LIST_HEIGHT = 180
 
     local TYPE_COLORS = {
         crumb = Color3.fromRGB(160, 140, 100),
@@ -67,6 +67,14 @@ local FoodSourceHUD = Node.extend(function(parent)
         insect = Color3.fromRGB(180, 100, 100),
         fruit = Color3.fromRGB(200, 140, 60),
         honeydew = Color3.fromRGB(220, 200, 60),
+    }
+
+    local TYPE_BUFFS = {
+        crumb    = "Eff:50%",
+        seed     = "End:40%",
+        insect   = "All:30%",
+        fruit    = "Egg:20%",
+        honeydew = "—",
     }
 
     local function createUI(self)
@@ -94,7 +102,7 @@ local FoodSourceHUD = Node.extend(function(parent)
         local container = Instance.new("Frame")
         container.Name = "Container"
         container.AnchorPoint = Vector2.new(1, 0)
-        container.Position = UDim2.new(1, -10, 0, 276)
+        container.Position = UDim2.new(1, -10, 0, 296)
         container.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
         container.BackgroundTransparency = 0.5
         container.BorderSizePixel = 0
@@ -221,11 +229,11 @@ local FoodSourceHUD = Node.extend(function(parent)
             typeLabel.TextXAlignment = Enum.TextXAlignment.Left
             typeLabel.Parent = row
 
-            -- Stats line
+            -- Stats line (energy, pile size, distance)
             local statsLabel = Instance.new("TextLabel")
             statsLabel.Name = "Stats"
             statsLabel.Size = UDim2.new(1, -6, 0, 10)
-            statsLabel.Position = UDim2.new(0, 4, 0, 15)
+            statsLabel.Position = UDim2.new(0, 4, 0, 14)
             statsLabel.BackgroundTransparency = 1
             statsLabel.Text = string.format("E:%d  x%d  D:%d",
                 s.energyPerGather, s.remaining, s.distance)
@@ -234,6 +242,19 @@ local FoodSourceHUD = Node.extend(function(parent)
             statsLabel.Font = Enum.Font.Gotham
             statsLabel.TextXAlignment = Enum.TextXAlignment.Left
             statsLabel.Parent = row
+
+            -- Buff line
+            local buffLabel = Instance.new("TextLabel")
+            buffLabel.Name = "Buff"
+            buffLabel.Size = UDim2.new(1, -6, 0, 10)
+            buffLabel.Position = UDim2.new(0, 4, 0, 25)
+            buffLabel.BackgroundTransparency = 1
+            buffLabel.Text = "Buff: " .. (TYPE_BUFFS[s.type] or "—")
+            buffLabel.TextColor3 = Color3.fromRGB(120, 200, 160)
+            buffLabel.TextSize = 9
+            buffLabel.Font = Enum.Font.Gotham
+            buffLabel.TextXAlignment = Enum.TextXAlignment.Left
+            buffLabel.Parent = row
 
             state.sourceRows[s.id] = row
             y = y + ROW_HEIGHT + ROW_GAP

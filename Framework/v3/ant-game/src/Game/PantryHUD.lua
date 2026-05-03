@@ -38,6 +38,7 @@ local PantryHUD = Node.extend(function(parent)
                 screenGui = nil,
                 stockFill = nil,
                 stockLabel = nil,
+                buffLabel = nil,
             }
         end
         return instanceStates[self.id]
@@ -143,6 +144,11 @@ local PantryHUD = Node.extend(function(parent)
 
         -- Stock label
         state.stockLabel = createLabel(container, "StockLabel", y, "Stock: 0/200")
+        y = y + ROW_HEIGHT + ROW_GAP
+
+        -- Buff label
+        state.buffLabel = createLabel(container, "BuffLabel", y, "Buffs: --", Color3.fromRGB(160, 160, 160))
+        state.buffLabel.TextSize = 10
         y = y + ROW_HEIGHT + PADDING
 
         container.Size = UDim2.new(0, CONTAINER_WIDTH, 0, y)
@@ -186,6 +192,21 @@ local PantryHUD = Node.extend(function(parent)
 
                 if state.stockLabel and data.stock and data.capacity then
                     state.stockLabel.Text = string.format("Stock: %d/%d", data.stock, data.capacity)
+                end
+
+                if state.buffLabel and data.buffProfile then
+                    local b = data.buffProfile
+                    local parts = {}
+                    if b.efficiency and b.efficiency > 0.01 then
+                        parts[#parts + 1] = string.format("Eff:%d%%", b.efficiency * 100)
+                    end
+                    if b.endurance and b.endurance > 0.01 then
+                        parts[#parts + 1] = string.format("End:%d%%", b.endurance * 100)
+                    end
+                    if b.eggProduction and b.eggProduction > 0.01 then
+                        parts[#parts + 1] = string.format("Egg:%d%%", b.eggProduction * 100)
+                    end
+                    state.buffLabel.Text = #parts > 0 and table.concat(parts, " ") or "No buffs"
                 end
             end,
         },
