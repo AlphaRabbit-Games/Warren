@@ -73,6 +73,7 @@ IPC.registerNode(Game.ClutchHUD)
 IPC.registerNode(Game.WorkerHUD)
 IPC.registerNode(Game.CommandMenuHUD)
 IPC.registerNode(Game.FoodSourceHUD)
+IPC.registerNode(Game.XPHUD)
 
 -- Server-side nodes registered for cross-domain wiring resolution
 IPC.registerNode(Game.GameClock)
@@ -81,6 +82,7 @@ IPC.registerNode(Game.EggClutchNode)
 IPC.registerNode(Game.FoodHopperNode)
 IPC.registerNode(Game.FoodSourceNode)
 IPC.registerNode(Game.CommandManagerNode)
+IPC.registerNode(Game.GameManagerNode)
 
 --------------------------------------------------------------------------------
 -- MODE DEFINITION
@@ -93,6 +95,7 @@ IPC.defineMode("Colony", {
         "FoodSourceNode", "FoodSourceHUD",
         "PantryHUD", "ClutchHUD",
         "WorkerHUD", "CommandManagerNode", "CommandMenuHUD",
+        "GameManagerNode", "XPHUD",
     },
     wiring = {
         GameClock = { "TimeHUD" },
@@ -103,6 +106,8 @@ IPC.defineMode("Colony", {
         WorkerHUD = { "CommandMenuHUD", "CommandManagerNode" },
         CommandManagerNode = { "CommandMenuHUD" },
         CommandMenuHUD = { "CommandManagerNode" },
+        GameManagerNode = { "XPHUD" },
+        XPHUD = { "GameManagerNode" },
     },
 })
 
@@ -115,6 +120,7 @@ IPC.createInstance("PantryHUD", { id = "PantryHUD_Local" })
 IPC.createInstance("ClutchHUD", { id = "ClutchHUD_Local" })
 IPC.createInstance("FoodSourceHUD", { id = "FoodSourceHUD_Local" })
 IPC.createInstance("WorkerHUD", { id = "WorkerHUD_Local" })
+IPC.createInstance("XPHUD", { id = "XPHUD_Local" })
 IPC.createInstance("CommandMenuHUD", { id = "CommandMenu_Local" })
 
 IPC.init()

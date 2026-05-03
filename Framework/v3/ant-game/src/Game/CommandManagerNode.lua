@@ -47,16 +47,15 @@ local Node = Warren.Node
 -- DEFAULTS
 --------------------------------------------------------------------------------
 
-local MAX_WORKERS_PER_UPGRADE = 2  -- max ants on upgrade tasks per target
-
--- Tasks with no worker cap (gather, dig, layEggs)
-local UNCAPPED_TASKS = {
-    explore = true,
-    gatherClosest = true,
-    gatherLargest = true,
-    gatherBest = true,
-    dig = true,
-    layEggs = true,
+local TASK_CAPS = {
+    explore = 999,
+    gatherClosest = 999,
+    gatherLargest = 999,
+    gatherBest = 999,
+    dig = 999,
+    layEggs = 999,
+    upgrade = 2,
+    upgradePantry = 2,
 }
 
 --------------------------------------------------------------------------------
@@ -121,72 +120,82 @@ local CommandManagerNode = Node.extend(function(parent)
             }
         end
 
-        -- Explore — always available, uncapped
+        -- Explore
         local exploreAssigned = countAssignments(state, "explore", nil)
-        commands[#commands + 1] = {
-            task = "explore",
-            targetId = nil,
-            label = string.format("Explore (%d ants, %d undiscovered)",
-                exploreAssigned, state.undiscoveredSourceCount),
-        }
+        if exploreAssigned < TASK_CAPS.explore then
+            commands[#commands + 1] = {
+                task = "explore",
+                targetId = nil,
+                label = string.format("Explore (%d ants, %d undiscovered)",
+                    exploreAssigned, state.undiscoveredSourceCount),
+            }
+        end
 
         -- Gather strategies — only when discovered sources exist
         if state.hasDiscoveredSources then
             local closestAssigned = countAssignments(state, "gatherClosest", nil)
-            commands[#commands + 1] = {
-                task = "gatherClosest",
-                targetId = nil,
-                label = string.format("Gather Closest (%d ants)", closestAssigned),
-            }
+            if closestAssigned < TASK_CAPS.gatherClosest then
+                commands[#commands + 1] = {
+                    task = "gatherClosest",
+                    targetId = nil,
+                    label = string.format("Gather Closest (%d ants)", closestAssigned),
+                }
+            end
 
             local largestAssigned = countAssignments(state, "gatherLargest", nil)
-            commands[#commands + 1] = {
-                task = "gatherLargest",
-                targetId = nil,
-                label = string.format("Gather Largest (%d ants)", largestAssigned),
-            }
+            if largestAssigned < TASK_CAPS.gatherLargest then
+                commands[#commands + 1] = {
+                    task = "gatherLargest",
+                    targetId = nil,
+                    label = string.format("Gather Largest (%d ants)", largestAssigned),
+                }
+            end
 
             local bestAssigned = countAssignments(state, "gatherBest", nil)
-            commands[#commands + 1] = {
-                task = "gatherBest",
-                targetId = nil,
-                label = string.format("Gather Best (%d ants)", bestAssigned),
-            }
+            if bestAssigned < TASK_CAPS.gatherBest then
+                commands[#commands + 1] = {
+                    task = "gatherBest",
+                    targetId = nil,
+                    label = string.format("Gather Best (%d ants)", bestAssigned),
+                }
+            end
         end
 
-        -- Dig tunnel — always available, uncapped
+        -- Dig tunnel
         local digAssigned = countAssignments(state, "dig", "colony")
-        commands[#commands + 1] = {
-            task = "dig",
-            targetId = "colony",
-            label = string.format("Dig Tunnel (%d ants)", digAssigned),
-        }
+        if digAssigned < TASK_CAPS.dig then
+            commands[#commands + 1] = {
+                task = "dig",
+                targetId = "colony",
+                label = string.format("Dig Tunnel (%d ants)", digAssigned),
+            }
+        end
 
         -- Chamber-dependent commands
         for targetId, chamber in pairs(state.chambers) do
             if chamber.type == "clutch" then
                 if chamber.status.capacity < chamber.status.maxCapacity then
                     local assigned = countAssignments(state, "upgrade", targetId)
-                    if assigned < MAX_WORKERS_PER_UPGRADE then
+                    if assigned < TASK_CAPS.upgrade then
                         commands[#commands + 1] = {
                             task = "upgrade",
                             targetId = targetId,
                             label = string.format("Upgrade Clutch (%d/%d cap, %d/%d ants)",
                                 chamber.status.capacity, chamber.status.maxCapacity,
-                                assigned, MAX_WORKERS_PER_UPGRADE),
+                                assigned, TASK_CAPS.upgrade),
                         }
                     end
                 end
             elseif chamber.type == "hopper" then
                 if chamber.status.capacity < chamber.status.maxCapacity then
                     local upgradeAssigned = countAssignments(state, "upgradePantry", targetId)
-                    if upgradeAssigned < MAX_WORKERS_PER_UPGRADE then
+                    if upgradeAssigned < TASK_CAPS.upgradePantry then
                         commands[#commands + 1] = {
                             task = "upgradePantry",
                             targetId = targetId,
                             label = string.format("Upgrade Pantry (%d/%d cap, %d/%d ants)",
                                 chamber.status.capacity, chamber.status.maxCapacity,
-                                upgradeAssigned, MAX_WORKERS_PER_UPGRADE),
+                                upgradeAssigned, TASK_CAPS.upgradePantry),
                         }
                     end
                 end
@@ -350,19 +359,18 @@ local CommandManagerNode = Node.extend(function(parent)
                 local state = getState(self)
                 local targetId = data.targetId or "colony"
 
-                -- Validate: check slot availability (only for capped tasks)
-                if not UNCAPPED_TASKS[data.task] then
-                    local assigned = countAssignments(state, data.task, targetId)
-                    if assigned >= MAX_WORKERS_PER_UPGRADE then
-                        local System = self._System
-                        if System and System.Debug then
-                            System.Debug.warn("CommandManager", string.format(
-                                "Rejected — %s on %s is full (%d/%d)",
-                                data.task, targetId, assigned, MAX_WORKERS_PER_UPGRADE
-                            ))
-                        end
-                        return
+                -- Validate: check slot availability
+                local cap = TASK_CAPS[data.task] or 2
+                local assigned = countAssignments(state, data.task, targetId)
+                if assigned >= cap then
+                    local System = self._System
+                    if System and System.Debug then
+                        System.Debug.warn("CommandManager", string.format(
+                            "Rejected — %s on %s is full (%d/%d)",
+                            data.task, targetId, assigned, cap
+                        ))
                     end
+                    return
                 end
 
                 -- Validate: check chamber-specific constraints

@@ -61,5 +61,6 @@ Game.CommandMenuHUD = require(script.CommandMenuHUD)
 Game.FoodSourceNode = require(script.FoodSourceNode)
 Game.FoodSourceHUD = require(script.FoodSourceHUD)
 Game.GameManagerNode = require(script.GameManagerNode)
+Game.XPHUD = require(script.XPHUD)
 
 return Game

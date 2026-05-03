@@ -84,6 +84,7 @@ IPC.registerNode(Game.CommandMenuHUD)
 IPC.registerNode(Game.FoodSourceNode)
 IPC.registerNode(Game.FoodSourceHUD)
 IPC.registerNode(Game.GameManagerNode)
+IPC.registerNode(Game.XPHUD)
 
 Asset.buildInheritanceTree()
 
@@ -98,7 +99,7 @@ IPC.defineMode("Colony", {
         "FoodSourceNode", "FoodSourceHUD",
         "PantryHUD", "ClutchHUD", "WorkerHUD",
         "CommandManagerNode", "CommandMenuHUD",
-        "GameManagerNode",
+        "GameManagerNode", "XPHUD",
     },
     wiring = {
         GameClock = { "TimeHUD", "ColonyNode", "EggClutchNode", "FoodSourceNode" },
@@ -109,7 +110,8 @@ IPC.defineMode("Colony", {
         WorkerHUD = { "CommandMenuHUD", "CommandManagerNode" },
         CommandManagerNode = { "CommandMenuHUD", "ColonyNode" },
         CommandMenuHUD = { "CommandManagerNode" },
-        GameManagerNode = { "FoodSourceNode" },
+        GameManagerNode = { "FoodSourceNode", "ColonyNode", "XPHUD" },
+        XPHUD = { "GameManagerNode" },
     },
 })
 

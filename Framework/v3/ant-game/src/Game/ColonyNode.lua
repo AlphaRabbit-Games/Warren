@@ -136,6 +136,12 @@ local ColonyNode = Node.extend(function(parent)
                 ants = {},
                 nextId = 1,
                 eggCount = 0,
+                -- Hatchling template (updated by GameManager)
+                hatchlingStats = {
+                    maxRange = CLASS_DATA.worker.maxRange,
+                    energyCap = CLASS_DATA.worker.energyCap,
+                    metabolismRate = CLASS_DATA.worker.metabolismRate,
+                },
             }
         end
         return instanceStates[self.id]
@@ -154,6 +160,11 @@ local ColonyNode = Node.extend(function(parent)
         state.nextId = id + 1
         local data = CLASS_DATA[class]
 
+        -- Workers inherit hatchling template stats
+        local energyCap = class == "worker" and state.hatchlingStats.energyCap or data.energyCap
+        local metabolismRate = class == "worker" and state.hatchlingStats.metabolismRate or data.metabolismRate
+        local maxRange = class == "worker" and state.hatchlingStats.maxRange or (data.maxRange or 30)
+
         local ant = {
             id = id,
             name = class == "queen" and "Queen" or ("Ant #" .. id),
@@ -161,9 +172,9 @@ local ColonyNode = Node.extend(function(parent)
             alive = true,
 
             -- Energy
-            energy = data.energyCap,  -- start full
-            energyCap = data.energyCap,
-            metabolismRate = data.metabolismRate,
+            energy = energyCap,  -- start full
+            energyCap = energyCap,
+            metabolismRate = metabolismRate,
 
             -- Eating
             biteRate = data.biteRate,
@@ -184,7 +195,7 @@ local ColonyNode = Node.extend(function(parent)
             tasksCompleted = 0,
 
             -- Class-specific
-            maxRange = data.maxRange or 30,
+            maxRange = maxRange,
             eggEnergyCost = data.eggEnergyCost or 0,
             eggInterval = data.eggInterval or 0,
             eggCounter = 0,
@@ -464,6 +475,7 @@ local ColonyNode = Node.extend(function(parent)
                                     antId = ant.id,
                                     sourceId = ant.pendingSourceId,
                                 })
+                                self.Out:Fire("tripComplete", { antId = ant.id })
                             end
                         elseif ant.task == "gatherClosest" or ant.task == "gatherLargest" or ant.task == "gatherBest" then
                             -- Travel-based: duration set by FoodSourceNode
@@ -474,6 +486,7 @@ local ColonyNode = Node.extend(function(parent)
                                     antId = ant.id,
                                     sourceId = ant.pendingSourceId,
                                 })
+                                self.Out:Fire("tripComplete", { antId = ant.id })
                             end
                         else
                             -- Duration-based tasks (dig, upgrade, etc)
@@ -499,7 +512,7 @@ local ColonyNode = Node.extend(function(parent)
                             if System and System.Debug then
                                 System.Debug.info("ColonyNode", string.format(
                                     "%s completed %s (#%d) — resting",
-                                    ant.name, ant.task, ant.tasksCompleted
+                                    ant.name, ant.task or "?", ant.tasksCompleted
                                 ))
                             end
                         end
@@ -722,6 +735,41 @@ local ColonyNode = Node.extend(function(parent)
                 fireStatus(self)
             end,
 
+            onQueenStatsChanged = function(self, data)
+                if not data then return end
+
+                local state = getState(self)
+
+                -- Update hatchling template
+                if data.hatchlingStats then
+                    state.hatchlingStats.maxRange = data.hatchlingStats.maxRange or state.hatchlingStats.maxRange
+                    state.hatchlingStats.energyCap = data.hatchlingStats.energyCap or state.hatchlingStats.energyCap
+                    state.hatchlingStats.metabolismRate = data.hatchlingStats.metabolismRate or state.hatchlingStats.metabolismRate
+                end
+
+                -- Update queen's egg stats
+                if data.queenStats then
+                    for _, ant in ipairs(state.ants) do
+                        if ant.alive and ant.class == "queen" then
+                            ant.eggInterval = data.queenStats.eggInterval or ant.eggInterval
+                            ant.eggEnergyCost = data.queenStats.eggEnergyCost or ant.eggEnergyCost
+                        end
+                    end
+                end
+
+                local System = self._System
+                if System and System.Debug then
+                    System.Debug.info("ColonyNode", string.format(
+                        "Queen stats updated — eggInterval:%d, eggCost:%d, hatchRange:%d, hatchCap:%d, hatchMeta:%.1f",
+                        data.queenStats and data.queenStats.eggInterval or 0,
+                        data.queenStats and data.queenStats.eggEnergyCost or 0,
+                        state.hatchlingStats.maxRange,
+                        state.hatchlingStats.energyCap,
+                        state.hatchlingStats.metabolismRate
+                    ))
+                end
+            end,
+
             onFoodDispensed = function(self, data)
                 local System = self._System
                 if System and System.Debug then
@@ -778,6 +826,7 @@ local ColonyNode = Node.extend(function(parent)
             exploreComplete = {},
             gatherRequest = {},
             gatherComplete = {},
+            tripComplete = {},
             clutchUpgrade = {},
             pantryUpgrade = {},
             tunnelDug = {},
