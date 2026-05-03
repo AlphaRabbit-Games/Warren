@@ -254,6 +254,8 @@ local CommandMenuHUD = Node.extend(function(parent)
 
             local task = cmd.task
             local targetId = cmd.targetId
+            local rebirthTo = cmd.rebirthTo
+            local reclassTo = cmd.reclassTo
             btn.MouseButton1Click:Connect(function()
                 local s = getState(self)
                 if s.selectedWorkerId then
@@ -261,6 +263,8 @@ local CommandMenuHUD = Node.extend(function(parent)
                         workerId = s.selectedWorkerId,
                         task = task,
                         targetId = targetId,
+                        rebirthTo = rebirthTo,
+                        reclassTo = reclassTo,
                     })
                     -- Close menu after assignment
                     s.selectedWorkerId = nil

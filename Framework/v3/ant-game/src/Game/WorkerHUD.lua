@@ -80,6 +80,14 @@ local WorkerHUD = Node.extend(function(parent)
         idle = Color3.fromRGB(120, 120, 120),
         working = Color3.fromRGB(80, 200, 80),
         cooldown = Color3.fromRGB(200, 180, 60),
+        pending = Color3.fromRGB(160, 140, 200),
+    }
+
+    -- Base class colors (tier 1 ancestor determines color)
+    local BASE_CLASS_COLORS = {
+        explorer = Color3.fromRGB(100, 160, 180),
+        gatherer = Color3.fromRGB(140, 180, 80),
+        builder = Color3.fromRGB(180, 140, 60),
     }
 
     local TASK_LABELS = {
@@ -230,11 +238,28 @@ local WorkerHUD = Node.extend(function(parent)
             nameLabel.Size = UDim2.new(1, -6, 0, 14)
             nameLabel.Position = UDim2.new(0, 4, 0, 2)
             nameLabel.BackgroundTransparency = 1
-            nameLabel.Text = w.name
+            local classTag = ""
+            if w.className then
+                classTag = " [" .. w.className .. "]"
+            end
+            nameLabel.Text = w.name .. classTag
             local isQueen = w.class == "queen"
+            -- Color based on base class (tier 1 ancestor)
+            local classColor = nil
+            if w.classId then
+                -- Simple lookup: check if classId starts with a base class name
+                for baseId, color in pairs(BASE_CLASS_COLORS) do
+                    if w.classId == baseId or (w.className and w.className ~= "") then
+                        -- Use className from the tree to find base
+                        classColor = BASE_CLASS_COLORS[w.classId] or color
+                        break
+                    end
+                end
+            end
             nameLabel.TextColor3 = isSelected
                 and Color3.fromRGB(255, 220, 100)
-                or (isQueen and Color3.fromRGB(255, 180, 60) or Color3.fromRGB(220, 220, 220))
+                or (isQueen and Color3.fromRGB(255, 180, 60)
+                or (classColor or Color3.fromRGB(220, 220, 220)))
             nameLabel.TextSize = 11
             nameLabel.Font = Enum.Font.GothamBold
             nameLabel.TextXAlignment = Enum.TextXAlignment.Left

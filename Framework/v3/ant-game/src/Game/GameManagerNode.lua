@@ -422,6 +422,34 @@ local GameManagerNode = Node.extend(function(parent)
                     ))
                 end
             end,
+
+            onDeductXP = function(self, data)
+                if not data or not data.amount then return end
+
+                local state = getState(self)
+                if state.xp < data.amount then
+                    local System = self._System
+                    if System and System.Debug then
+                        System.Debug.warn("GameManager", string.format(
+                            "Not enough XP to deduct %d (have %d) — %s",
+                            data.amount, state.xp, data.reason or "?"
+                        ))
+                    end
+                    return
+                end
+
+                state.xp = state.xp - data.amount
+
+                local System = self._System
+                if System and System.Debug then
+                    System.Debug.info("GameManager", string.format(
+                        "Deducted %d XP for %s (%d remaining)",
+                        data.amount, data.reason or "?", state.xp
+                    ))
+                end
+
+                fireXPStatus(self)
+            end,
         },
 
         Out = {

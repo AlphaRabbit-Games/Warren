@@ -108,7 +108,7 @@ IPC.defineMode("Colony", {
         FoodHopperNode = { "ColonyNode", "PantryHUD", "CommandManagerNode" },
         EggClutchNode = { "ClutchHUD", "ColonyNode", "CommandManagerNode", "GameManagerNode" },
         WorkerHUD = { "CommandMenuHUD", "CommandManagerNode" },
-        CommandManagerNode = { "CommandMenuHUD", "ColonyNode" },
+        CommandManagerNode = { "CommandMenuHUD", "ColonyNode", "GameManagerNode" },
         CommandMenuHUD = { "CommandManagerNode" },
         GameManagerNode = { "FoodSourceNode", "ColonyNode", "XPHUD" },
         XPHUD = { "GameManagerNode" },

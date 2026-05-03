@@ -41,11 +41,19 @@
 --]]
 
 local Warren = require(game:GetService("ReplicatedStorage").Warren)
+local ClassTree = require(script.Parent.ClassTree)
 local Node = Warren.Node
 
 --------------------------------------------------------------------------------
 -- DEFAULTS
 --------------------------------------------------------------------------------
+
+local RECLASS_BASE_COST = 3
+local RECLASS_COST_GROWTH = 1.25
+
+local function getReclassCost(reclassCount)
+    return math.ceil(RECLASS_BASE_COST * RECLASS_COST_GROWTH ^ reclassCount)
+end
 
 local TASK_CAPS = {
     explore = 999,
@@ -75,8 +83,11 @@ local CommandManagerNode = Node.extend(function(parent)
                 chambers = {},
                 -- Current ant list from ColonyNode
                 ants = {},
-                -- Currently selected ant (for class-based commands)
+                -- Currently selected ant info
                 selectedAntClass = nil,
+                selectedWorkerClass = nil,
+                selectedClassLocked = false,
+                selectedReclassCount = 0,
                 -- Food source tracking
                 hasDiscoveredSources = false,
                 discoveredSourceCount = 0,
@@ -110,124 +121,99 @@ local CommandManagerNode = Node.extend(function(parent)
     -- COMMAND BUILDING
     --------------------------------------------------------------------------
 
+    -- Check if a gather command is available (needs discovered sources)
+    local function isGatherCommandAvailable(state, task)
+        if task == "gatherClosest" or task == "gatherLargest" or task == "gatherBest"
+            or task == "gatherEfficiency" or task == "gatherEndurance" or task == "gatherEggBuff" then
+            return state.hasDiscoveredSources
+        end
+        return true
+    end
+
     local function buildCommands(self)
         local state = getState(self)
         local commands = {}
 
-        -- Lay Eggs — queen only
+        -- Queen commands
         if state.selectedAntClass == "queen" then
             commands[#commands + 1] = {
                 task = "layEggs",
                 targetId = nil,
                 label = "Lay Eggs",
             }
+            return commands
         end
 
-        -- Explore
-        local exploreAssigned = countAssignments(state, "explore", nil)
-        if exploreAssigned < TASK_CAPS.explore then
-            commands[#commands + 1] = {
-                task = "explore",
-                targetId = nil,
-                label = string.format("Explore (%d ants, %d undiscovered)",
-                    exploreAssigned, state.undiscoveredSourceCount),
-            }
-        end
+        -- Worker commands — driven by class tree
+        if state.selectedAntClass == "worker" and state.selectedClassId then
+            local classDef = ClassTree.get(state.selectedClassId)
 
-        -- Gather strategies — only when discovered sources exist
-        if state.hasDiscoveredSources then
-            local closestAssigned = countAssignments(state, "gatherClosest", nil)
-            if closestAssigned < TASK_CAPS.gatherClosest then
-                commands[#commands + 1] = {
-                    task = "gatherClosest",
-                    targetId = nil,
-                    label = string.format("Gather Closest (%d ants)", closestAssigned),
-                }
-            end
-
-            local largestAssigned = countAssignments(state, "gatherLargest", nil)
-            if largestAssigned < TASK_CAPS.gatherLargest then
-                commands[#commands + 1] = {
-                    task = "gatherLargest",
-                    targetId = nil,
-                    label = string.format("Gather Largest (%d ants)", largestAssigned),
-                }
-            end
-
-            local bestAssigned = countAssignments(state, "gatherBest", nil)
-            if bestAssigned < TASK_CAPS.gatherBest then
-                commands[#commands + 1] = {
-                    task = "gatherBest",
-                    targetId = nil,
-                    label = string.format("Gather Best Energy (%d ants)", bestAssigned),
-                }
-            end
-
-            local effAssigned = countAssignments(state, "gatherEfficiency", nil)
-            if effAssigned < TASK_CAPS.gatherEfficiency then
-                commands[#commands + 1] = {
-                    task = "gatherEfficiency",
-                    targetId = nil,
-                    label = string.format("Gather Efficiency (%d ants)", effAssigned),
-                }
-            end
-
-            local endAssigned = countAssignments(state, "gatherEndurance", nil)
-            if endAssigned < TASK_CAPS.gatherEndurance then
-                commands[#commands + 1] = {
-                    task = "gatherEndurance",
-                    targetId = nil,
-                    label = string.format("Gather Endurance (%d ants)", endAssigned),
-                }
-            end
-
-            local eggAssigned = countAssignments(state, "gatherEggBuff", nil)
-            if eggAssigned < TASK_CAPS.gatherEggBuff then
-                commands[#commands + 1] = {
-                    task = "gatherEggBuff",
-                    targetId = nil,
-                    label = string.format("Gather Egg Buff (%d ants)", eggAssigned),
-                }
-            end
-        end
-
-        -- Dig tunnel
-        local digAssigned = countAssignments(state, "dig", "colony")
-        if digAssigned < TASK_CAPS.dig then
-            commands[#commands + 1] = {
-                task = "dig",
-                targetId = "colony",
-                label = string.format("Dig Tunnel (%d ants)", digAssigned),
-            }
-        end
-
-        -- Chamber-dependent commands
-        for targetId, chamber in pairs(state.chambers) do
-            if chamber.type == "clutch" then
-                if chamber.status.capacity < chamber.status.maxCapacity then
-                    local assigned = countAssignments(state, "upgrade", targetId)
-                    if assigned < TASK_CAPS.upgrade then
-                        commands[#commands + 1] = {
-                            task = "upgrade",
-                            targetId = targetId,
-                            label = string.format("Upgrade Clutch (%d/%d cap, %d/%d ants)",
-                                chamber.status.capacity, chamber.status.maxCapacity,
-                                assigned, TASK_CAPS.upgrade),
-                        }
-                    end
+            if classDef then
+                -- Primary action: the command for this class
+                local cmd = classDef.command
+                if cmd and isGatherCommandAvailable(state, cmd) then
+                    local assigned = countAssignments(state, cmd, nil)
+                    commands[#commands + 1] = {
+                        task = cmd,
+                        targetId = nil,
+                        label = string.format("%s — %s (%d ants)",
+                            classDef.name, cmd, assigned),
+                    }
                 end
-            elseif chamber.type == "hopper" then
-                if chamber.status.capacity < chamber.status.maxCapacity then
-                    local upgradeAssigned = countAssignments(state, "upgradePantry", targetId)
-                    if upgradeAssigned < TASK_CAPS.upgradePantry then
-                        commands[#commands + 1] = {
-                            task = "upgradePantry",
-                            targetId = targetId,
-                            label = string.format("Upgrade Pantry (%d/%d cap, %d/%d ants)",
-                                chamber.status.capacity, chamber.status.maxCapacity,
-                                upgradeAssigned, TASK_CAPS.upgradePantry),
-                        }
+
+                -- Rebirth options: show children of current class
+                local rebirthOptions = ClassTree.getChildren(state.selectedClassId)
+                for _, child in ipairs(rebirthOptions) do
+                    -- Check if ant meets requirements
+                    local reqParts = {}
+                    for stat, val in pairs(child.statReqs) do
+                        reqParts[#reqParts + 1] = string.format("%s≥%s", stat, tostring(val))
                     end
+                    local reqStr = #reqParts > 0 and table.concat(reqParts, ", ") or "none"
+
+                    -- Find the selected ant to check eligibility
+                    local canDo = false
+                    for _, a in ipairs(state.ants) do
+                        if a.id == state.selectedAntId then
+                            canDo = ClassTree.canRebirth(a, child.id)
+                            break
+                        end
+                    end
+
+                    commands[#commands + 1] = {
+                        task = child.command,
+                        rebirthTo = child.id,
+                        targetId = nil,
+                        label = string.format("↳ Rebirth: %s [%d XP]\n  %s (%s)",
+                            child.name, child.rebirthCost,
+                            child.description, reqStr),
+                        isRebirth = true,
+                        available = canDo,
+                        rebirthCost = child.rebirthCost,
+                    }
+                end
+            end
+
+            -- Reclass options: show tier 1 classes that aren't the current base
+            local baseClass = ClassTree.getBaseClass(state.selectedClassId)
+            local tier1Classes = ClassTree.getTier1Classes()
+            local reclassCost = getReclassCost(state.selectedReclassCount)
+
+            for _, cls in ipairs(tier1Classes) do
+                if not baseClass or cls.id ~= baseClass.id then
+                    local costLabel = state.selectedClassLocked
+                        and string.format("[Reclass: %d XP]", reclassCost)
+                        or "[Free]"
+
+                    commands[#commands + 1] = {
+                        task = cls.command,
+                        reclassTo = cls.id,
+                        targetId = nil,
+                        label = string.format("⟲ %s %s\n  %s",
+                            cls.name, costLabel, cls.description),
+                        isReclass = true,
+                        reclassCost = state.selectedClassLocked and reclassCost or 0,
+                    }
                 end
             end
         end
@@ -341,17 +327,25 @@ local CommandManagerNode = Node.extend(function(parent)
                 if not data then return end
                 local state = getState(self)
 
-                -- Find ant class for the selected ant
                 if data.workerId then
+                    state.selectedAntId = data.workerId
                     state.selectedAntClass = nil
+                    state.selectedClassId = nil
+                    state.selectedClassLocked = false
+                    state.selectedReclassCount = 0
                     for _, a in ipairs(state.ants) do
                         if a.id == data.workerId then
                             state.selectedAntClass = a.class
+                            state.selectedClassId = a.classId
+                            state.selectedClassLocked = a.classLocked or false
+                            state.selectedReclassCount = a.reclassCount or 0
                             break
                         end
                     end
                 else
+                    state.selectedAntId = nil
                     state.selectedAntClass = nil
+                    state.selectedClassId = nil
                 end
 
                 broadcastCommands(self)
@@ -360,6 +354,7 @@ local CommandManagerNode = Node.extend(function(parent)
             onDeselectWorker = function(self)
                 local state = getState(self)
                 state.selectedAntClass = nil
+                state.selectedWorkerClass = nil
                 broadcastCommands(self)
             end,
 
@@ -417,7 +412,44 @@ local CommandManagerNode = Node.extend(function(parent)
                     end
                 end
 
-                -- Forward validated command
+                -- Handle rebirth
+                if data.rebirthTo then
+                    local cls = ClassTree.get(data.rebirthTo)
+                    if cls then
+                        self.Out:Fire("deductXP", { amount = cls.rebirthCost, reason = "rebirth:" .. data.rebirthTo })
+                    end
+
+                    self.Out:Fire("assignTask", {
+                        antId = data.workerId,
+                        task = data.task,
+                        targetId = targetId,
+                        rebirthTo = data.rebirthTo,
+                    })
+                    return
+                end
+
+                -- Handle reclass
+                if data.reclassTo then
+                    local ant = nil
+                    for _, a in ipairs(state.ants) do
+                        if a.id == data.workerId then ant = a; break end
+                    end
+
+                    if ant and ant.classLocked then
+                        local cost = getReclassCost(ant.reclassCount or 0)
+                        self.Out:Fire("deductXP", { amount = cost, reason = "reclass:" .. data.reclassTo })
+                    end
+
+                    self.Out:Fire("assignTask", {
+                        antId = data.workerId,
+                        task = data.task,
+                        targetId = targetId,
+                        reclassTo = data.reclassTo,
+                    })
+                    return
+                end
+
+                -- Forward normal command
                 self.Out:Fire("assignTask", {
                     antId = data.workerId,
                     task = data.task,
@@ -438,6 +470,7 @@ local CommandManagerNode = Node.extend(function(parent)
             availableCommands = {},
             assignTask = {},
             idleWorkers = {},
+            deductXP = {},
         },
     }
 end)

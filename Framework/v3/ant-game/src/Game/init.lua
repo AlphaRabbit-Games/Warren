@@ -60,6 +60,7 @@ Game.CommandManagerNode = require(script.CommandManagerNode)
 Game.CommandMenuHUD = require(script.CommandMenuHUD)
 Game.FoodSourceNode = require(script.FoodSourceNode)
 Game.FoodSourceHUD = require(script.FoodSourceHUD)
+Game.ClassTree = require(script.ClassTree)
 Game.GameManagerNode = require(script.GameManagerNode)
 Game.XPHUD = require(script.XPHUD)
 
