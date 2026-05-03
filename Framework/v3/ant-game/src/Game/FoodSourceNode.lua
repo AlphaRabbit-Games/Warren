@@ -129,6 +129,7 @@ local FoodSourceNode = Node.extend(function(parent)
                 nextSourceId = 1,
                 rng = Random.new(),
                 spawnCounter = 0,
+                difficultyMultiplier = DIFFICULTY_MULTIPLIER,
             }
         end
         return instanceStates[self.id]
@@ -151,7 +152,7 @@ local FoodSourceNode = Node.extend(function(parent)
         local gatherCycle = distance * 2 + BASELINE_COOLDOWN
         local energy = math.floor(
             BASELINE_COLONY_SIZE * BASELINE_METABOLISM * gatherCycle
-            * DIFFICULTY_MULTIPLIER * ft.nutritionTier
+            * state.difficultyMultiplier * ft.nutritionTier
         )
 
         local source = {
@@ -416,6 +417,22 @@ local FoodSourceNode = Node.extend(function(parent)
                         fireStatus(self)
                         break
                     end
+                end
+            end,
+
+            onDifficultyChanged = function(self, data)
+                if not data or not data.multiplier then return end
+
+                local state = getState(self)
+                local before = state.difficultyMultiplier
+                state.difficultyMultiplier = data.multiplier
+
+                local System = self._System
+                if System and System.Debug then
+                    System.Debug.info("FoodSourceNode", string.format(
+                        "Difficulty updated — %.2f → %.2f (hatch #%d)",
+                        before, data.multiplier, data.hatchCount or 0
+                    ))
                 end
             end,
         },

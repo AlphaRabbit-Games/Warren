@@ -83,6 +83,7 @@ IPC.registerNode(Game.CommandManagerNode)
 IPC.registerNode(Game.CommandMenuHUD)
 IPC.registerNode(Game.FoodSourceNode)
 IPC.registerNode(Game.FoodSourceHUD)
+IPC.registerNode(Game.GameManagerNode)
 
 Asset.buildInheritanceTree()
 
@@ -97,16 +98,18 @@ IPC.defineMode("Colony", {
         "FoodSourceNode", "FoodSourceHUD",
         "PantryHUD", "ClutchHUD", "WorkerHUD",
         "CommandManagerNode", "CommandMenuHUD",
+        "GameManagerNode",
     },
     wiring = {
         GameClock = { "TimeHUD", "ColonyNode", "EggClutchNode", "FoodSourceNode" },
-        ColonyNode = { "FoodSourceNode", "FoodHopperNode", "EggClutchNode", "WorkerHUD", "CommandManagerNode" },
+        ColonyNode = { "FoodSourceNode", "FoodHopperNode", "EggClutchNode", "WorkerHUD", "CommandManagerNode", "GameManagerNode" },
         FoodSourceNode = { "ColonyNode", "FoodHopperNode", "FoodSourceHUD", "CommandManagerNode" },
         FoodHopperNode = { "ColonyNode", "PantryHUD", "CommandManagerNode" },
-        EggClutchNode = { "ClutchHUD", "ColonyNode", "CommandManagerNode" },
+        EggClutchNode = { "ClutchHUD", "ColonyNode", "CommandManagerNode", "GameManagerNode" },
         WorkerHUD = { "CommandMenuHUD", "CommandManagerNode" },
         CommandManagerNode = { "CommandMenuHUD", "ColonyNode" },
         CommandMenuHUD = { "CommandManagerNode" },
+        GameManagerNode = { "FoodSourceNode" },
     },
 })
 
@@ -123,6 +126,7 @@ IPC.start()
 --------------------------------------------------------------------------------
 
 -- CommandManager first so chambers can register on start
+IPC.createInstance("GameManagerNode", { id = "GameManager" })
 IPC.createInstance("CommandManagerNode", { id = "CommandManager" })
 IPC.createInstance("GameClock", { id = "GameClock_Server" })
 IPC.createInstance("FoodSourceNode", { id = "FoodSources" })
