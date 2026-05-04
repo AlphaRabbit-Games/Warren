@@ -112,7 +112,7 @@ local CLASS_DATA = {
 }
 
 local TASK_DEFS = {
-    layEggs          = { duration = 0, cooldown = 10 },
+    layEggs          = { duration = 0, cooldown = 20 },
     explore          = { duration = 0, cooldown = 5 },
     gatherClosest    = { duration = 0, cooldown = 5 },
     gatherLargest    = { duration = 0, cooldown = 5 },
@@ -124,6 +124,8 @@ local TASK_DEFS = {
     upgrade          = { duration = 25, cooldown = 5 },
     upgradePantry    = { duration = 25, cooldown = 5 },
 }
+
+local IDLE_METABOLISM_MULTIPLIER = 0.5
 
 -- Helper: is this a gather task?
 local GATHER_TASKS = {
@@ -154,8 +156,6 @@ local BUFF_TO_CLASS = {
     eggProduction = "builder",
 }
 
-local RECLASS_BASE_COST = 3
-local RECLASS_COST_GROWTH = 1.25
 
 local DEFAULT_COOLDOWN = 5
 
@@ -200,7 +200,7 @@ local ColonyNode = Node.extend(function(parent)
     -- Determine default worker class from pantry buff profile
     local function getDefaultWorkerClass(state)
         local buff = state.buffProfile
-        local best = "gatherer"  -- default fallback
+        local best = "explorer"  -- default fallback
         local bestVal = 0
 
         for stat, className in pairs(BUFF_TO_CLASS) do
@@ -470,7 +470,25 @@ local ColonyNode = Node.extend(function(parent)
                     --------------------------------------------------------
                     if ant.status == "cooldown" then
                         ant.cooldownProgress = ant.cooldownProgress + 1
-                        if ant.cooldownProgress >= ant.cooldownDuration then
+
+                        -- Queen special: exit cooldown when full, idle if timer expires unfed
+                        if ant.task == "layEggs" then
+                            if ant.energy >= ant.energyCap then
+                                -- Full energy — resume laying
+                                assignTask(ant, "layEggs", ant.targetId)
+                            elseif ant.cooldownProgress >= ant.cooldownDuration then
+                                -- Timer expired without reaching full — go idle
+                                idleAnt(ant)
+                                local System = self._System
+                                if System and System.Debug then
+                                    System.Debug.info("ColonyNode", string.format(
+                                        "Queen idled — not enough food to continue laying (energy %d/%d)",
+                                        ant.energy, ant.energyCap
+                                    ))
+                                end
+                            end
+                        elseif ant.cooldownProgress >= ant.cooldownDuration then
+                            -- Normal cooldown exit for workers
                             if not ant.task then
                                 ant.status = "idle"
                             elseif ant.task == "explore" then
@@ -496,7 +514,11 @@ local ColonyNode = Node.extend(function(parent)
                     --------------------------------------------------------
                     -- METABOLISM: energy drains every tick except during cooldown
                     --------------------------------------------------------
-                    ant.energy = math.max(0, ant.energy - ant.metabolismRate)
+                    local metaRate = ant.metabolismRate
+                    if ant.status == "idle" then
+                        metaRate = metaRate * IDLE_METABOLISM_MULTIPLIER
+                    end
+                    ant.energy = math.max(0, ant.energy - metaRate)
 
                     --------------------------------------------------------
                     -- STARVATION
@@ -710,97 +732,90 @@ local ColonyNode = Node.extend(function(parent)
 
                 -- Worker class handling via ClassTree
                 if ant.class == "worker" and ant.classId then
-                    local currentCommand = ClassTree.getCommand(ant.classId)
+                    local System = self._System
 
-                    if data.task ~= currentCommand then
-                        -- Task doesn't match current class command
+                    if data.rebirthTo then
+                        -- Rebirth into a subclass
+                        local canDo, reason = ClassTree.canRebirth(ant, data.rebirthTo)
+                        if canDo then
+                            local newCls = ClassTree.get(data.rebirthTo)
+                            local oldId = ant.classId
+                            ant.classId = data.rebirthTo
 
-                        if data.rebirthTo then
-                            -- Rebirth request — check requirements and apply
-                            local canDo, reason = ClassTree.canRebirth(ant, data.rebirthTo)
-                            if canDo then
-                                local newCls = ClassTree.get(data.rebirthTo)
-                                local oldId = ant.classId
-                                ant.classId = data.rebirthTo
-
-                                -- Apply rebirth bonuses to base stats
-                                if newCls.bonuses then
-                                    for stat, bonus in pairs(newCls.bonuses) do
-                                        if stat == "maxRange" then
-                                            ant.baseMaxRange = ant.baseMaxRange + bonus
-                                        elseif stat == "energyCap" then
-                                            ant.baseEnergyCap = ant.baseEnergyCap + bonus
-                                        elseif stat == "metabolismRate" then
-                                            ant.baseMetabolismRate = math.max(0.2, ant.baseMetabolismRate + bonus)
-                                        end
+                            -- Apply rebirth bonuses to base stats
+                            if newCls and newCls.bonuses then
+                                for stat, bonus in pairs(newCls.bonuses) do
+                                    if stat == "maxRange" then
+                                        ant.baseMaxRange = ant.baseMaxRange + bonus
+                                    elseif stat == "energyCap" then
+                                        ant.baseEnergyCap = ant.baseEnergyCap + bonus
+                                    elseif stat == "metabolismRate" then
+                                        ant.baseMetabolismRate = math.max(0.2, ant.baseMetabolismRate + bonus)
                                     end
                                 end
-
-                                local System = self._System
-                                if System and System.Debug then
-                                    System.Debug.info("ColonyNode", string.format(
-                                        "%s reborn: %s → %s",
-                                        ant.name, oldId, data.rebirthTo
-                                    ))
-                                end
-                            else
-                                local System = self._System
-                                if System and System.Debug then
-                                    System.Debug.warn("ColonyNode", string.format(
-                                        "%s can't rebirth to %s: %s",
-                                        ant.name, data.rebirthTo, reason or "?"
-                                    ))
-                                end
-                                return
                             end
-                        elseif data.reclassTo then
-                            -- Class reassignment to a tier 1 class (costs XP, handled by CommandManager)
-                            local oldId = ant.classId
-                            ant.classId = data.reclassTo
-                            ant.reclassCount = ant.reclassCount + 1
 
-                            local System = self._System
                             if System and System.Debug then
                                 System.Debug.info("ColonyNode", string.format(
-                                    "%s reclassed: %s → %s (#%d)",
-                                    ant.name, oldId, data.reclassTo, ant.reclassCount
+                                    "%s reborn: %s → %s", ant.name, oldId, data.rebirthTo
                                 ))
                             end
-                        elseif not ant.classLocked then
-                            -- First assignment — free pick of tier 1 class
-                            -- Find which tier 1 class owns this command
-                            local tier1Classes = ClassTree.getTier1Classes()
-                            for _, cls in ipairs(tier1Classes) do
-                                if cls.command == data.task then
-                                    local oldId = ant.classId
-                                    ant.classId = cls.id
-                                    ant.classLocked = true
-
-                                    local System = self._System
-                                    if System and System.Debug then
-                                        System.Debug.info("ColonyNode", string.format(
-                                            "%s class: %s → %s (free first assignment)",
-                                            ant.name, oldId or "none", cls.id
-                                        ))
-                                    end
-                                    break
-                                end
-                            end
                         else
-                            -- Wrong class, no reclass/rebirth approved
-                            local System = self._System
                             if System and System.Debug then
                                 System.Debug.warn("ColonyNode", string.format(
-                                    "%s is %s, can't do %s",
-                                    ant.name, ant.classId, data.task
+                                    "%s can't rebirth to %s: %s", ant.name, data.rebirthTo, reason or "?"
                                 ))
                             end
                             return
                         end
+
+                    elseif data.reclassTo then
+                        -- Class reassignment to a tier 1 class
+                        local oldId = ant.classId
+                        ant.classId = data.reclassTo
+                        ant.reclassCount = ant.reclassCount + 1
+
+                        if System and System.Debug then
+                            System.Debug.info("ColonyNode", string.format(
+                                "%s reclassed: %s → %s (#%d)", ant.name, oldId, data.reclassTo, ant.reclassCount
+                            ))
+                        end
+
                     else
-                        -- Correct command for current class
-                        if not ant.classLocked then
-                            ant.classLocked = true
+                        -- Normal task assignment — check class match
+                        local currentCommand = ClassTree.getCommand(ant.classId)
+
+                        if data.task ~= currentCommand then
+                            if not ant.classLocked then
+                                -- Free first assignment — find tier 1 class for this command
+                                local tier1Classes = ClassTree.getTier1Classes()
+                                for _, cls in ipairs(tier1Classes) do
+                                    if cls.command == data.task then
+                                        local oldId = ant.classId
+                                        ant.classId = cls.id
+                                        ant.classLocked = true
+
+                                        if System and System.Debug then
+                                            System.Debug.info("ColonyNode", string.format(
+                                                "%s class: %s → %s (free first assignment)",
+                                                ant.name, oldId or "none", cls.id
+                                            ))
+                                        end
+                                        break
+                                    end
+                                end
+                            else
+                                if System and System.Debug then
+                                    System.Debug.warn("ColonyNode", string.format(
+                                        "%s is %s, can't do %s", ant.name, ant.classId, data.task
+                                    ))
+                                end
+                                return
+                            end
+                        else
+                            if not ant.classLocked then
+                                ant.classLocked = true
+                            end
                         end
                     end
                 end

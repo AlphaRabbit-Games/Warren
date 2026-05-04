@@ -48,7 +48,7 @@ local Node = Warren.Node
 -- DEFAULTS
 --------------------------------------------------------------------------------
 
-local RECLASS_BASE_COST = 3
+local RECLASS_BASE_COST = 1
 local RECLASS_COST_GROWTH = 1.25
 
 local function getReclassCost(reclassCount)
