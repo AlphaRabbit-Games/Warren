@@ -411,6 +411,7 @@ local ColonyNode = Node.extend(function(parent)
                     starvationThreshold = a.starvationThreshold,
                     task = a.task,
                     targetId = a.targetId,
+                    pendingSourceId = a.pendingSourceId,
                     status = a.status,
                     taskProgress = a.taskProgress,
                     taskDuration = a.taskDuration,

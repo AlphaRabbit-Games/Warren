@@ -63,5 +63,7 @@ Game.FoodSourceHUD = require(script.FoodSourceHUD)
 Game.ClassTree = require(script.ClassTree)
 Game.GameManagerNode = require(script.GameManagerNode)
 Game.XPHUD = require(script.XPHUD)
+Game.SurfaceWorldNode = require(script.SurfaceWorldNode)
+Game.WorkerRenderNode = require(script.WorkerRenderNode)
 
 return Game

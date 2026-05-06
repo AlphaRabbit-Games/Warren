@@ -155,6 +155,7 @@ local FoodSourceNode = Node.extend(function(parent)
         state.nextSourceId = id + 1
 
         local distance = randomInRange(state.rng, ft.distanceRange[1], ft.distanceRange[2])
+        local angle = state.rng:NextNumber() * math.pi * 2
         local gatherCycle = distance * 2 + BASELINE_COOLDOWN
         local energy = math.floor(
             BASELINE_COLONY_SIZE * BASELINE_METABOLISM * gatherCycle
@@ -167,6 +168,7 @@ local FoodSourceNode = Node.extend(function(parent)
             energyPerGather = energy,
             remaining = randomInRange(state.rng, ft.pileRange[1], ft.pileRange[2]),
             distance = distance,
+            angle = angle,
             discovered = false,
             buffStat = ft.buffStat,
             buffPower = ft.buffPower,
@@ -244,19 +246,23 @@ local FoodSourceNode = Node.extend(function(parent)
         local state = getState(self)
 
         local discovered = {}
+        local undiscovered = {}
         local undiscoveredCount = 0
 
         for _, s in ipairs(state.sources) do
             if s.remaining > 0 then
+                local payload = {
+                    id = s.id,
+                    type = s.type,
+                    energyPerGather = s.energyPerGather,
+                    remaining = s.remaining,
+                    distance = s.distance,
+                    angle = s.angle,
+                }
                 if s.discovered then
-                    discovered[#discovered + 1] = {
-                        id = s.id,
-                        type = s.type,
-                        energyPerGather = s.energyPerGather,
-                        remaining = s.remaining,
-                        distance = s.distance,
-                    }
+                    discovered[#discovered + 1] = payload
                 else
+                    undiscovered[#undiscovered + 1] = payload
                     undiscoveredCount = undiscoveredCount + 1
                 end
             end
@@ -264,6 +270,7 @@ local FoodSourceNode = Node.extend(function(parent)
 
         self.Out:Fire("foodSourceStatus", {
             discovered = discovered,
+            undiscovered = undiscovered,
             undiscoveredCount = undiscoveredCount,
         })
     end
@@ -345,6 +352,7 @@ local FoodSourceNode = Node.extend(function(parent)
                 self.Out:Fire("exploreAssigned", {
                     antId = data.antId,
                     distance = source.distance,
+                    angle = source.angle,
                     sourceId = source.id,
                 })
             end,
@@ -365,6 +373,7 @@ local FoodSourceNode = Node.extend(function(parent)
                             energyPerGather = s.energyPerGather,
                             remaining = s.remaining,
                             distance = s.distance,
+                            angle = s.angle,
                         })
 
                         local System = self._System
@@ -397,6 +406,7 @@ local FoodSourceNode = Node.extend(function(parent)
                     antId = data.antId,
                     sourceId = source.id,
                     distance = source.distance,
+                    angle = source.angle,
                     energyPerGather = source.energyPerGather,
                 })
             end,

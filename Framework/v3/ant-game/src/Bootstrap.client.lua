@@ -83,6 +83,8 @@ IPC.registerNode(Game.FoodHopperNode)
 IPC.registerNode(Game.FoodSourceNode)
 IPC.registerNode(Game.CommandManagerNode)
 IPC.registerNode(Game.GameManagerNode)
+IPC.registerNode(Game.SurfaceWorldNode)
+IPC.registerNode(Game.WorkerRenderNode)
 
 --------------------------------------------------------------------------------
 -- MODE DEFINITION
@@ -96,6 +98,7 @@ IPC.defineMode("Colony", {
         "PantryHUD", "ClutchHUD",
         "WorkerHUD", "CommandManagerNode", "CommandMenuHUD",
         "GameManagerNode", "XPHUD",
+        "SurfaceWorldNode", "WorkerRenderNode",
     },
     wiring = {
         GameClock = { "TimeHUD" },
