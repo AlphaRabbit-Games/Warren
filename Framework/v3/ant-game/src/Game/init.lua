@@ -65,5 +65,7 @@ Game.GameManagerNode = require(script.GameManagerNode)
 Game.XPHUD = require(script.XPHUD)
 Game.SurfaceWorldNode = require(script.SurfaceWorldNode)
 Game.WorkerRenderNode = require(script.WorkerRenderNode)
+Game.ScoreNode = require(script.ScoreNode)
+Game.ScoreHUD = require(script.ScoreHUD)
 
 return Game
